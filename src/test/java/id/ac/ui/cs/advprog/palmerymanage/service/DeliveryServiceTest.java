@@ -172,6 +172,7 @@ class DeliveryServiceTest {
         Delivery delivery = new Delivery();
         delivery.setId(UUID.randomUUID());
         delivery.setTotalKg(300);
+        delivery.setStatus(DeliveryStatus.PENDING_ADMIN_REVIEW);
 
         when(deliveryRepository.findById(delivery.getId())).thenReturn(Optional.of(delivery));
 
@@ -186,10 +187,24 @@ class DeliveryServiceTest {
     }
 
     @Test
+    void adminActionsRequirePendingReviewStatus() {
+        Delivery delivery = new Delivery();
+        delivery.setId(UUID.randomUUID());
+        delivery.setStatus(DeliveryStatus.MENGIRIM);
+        delivery.setTotalKg(300);
+
+        when(deliveryRepository.findById(delivery.getId())).thenReturn(Optional.of(delivery));
+
+        assertThrows(BadRequestException.class, () -> deliveryService.approveByAdmin(delivery.getId()));
+        assertThrows(BadRequestException.class,
+                () -> deliveryService.partialRejectByAdmin(delivery.getId(), 100, "susut"));
+        assertThrows(BadRequestException.class, () -> deliveryService.rejectByAdmin(delivery.getId(), "rusak"));
+    }
+
+    @Test
     void historyUsesDateRange() {
         deliveryService.riwayatSupir("DRV-1", LocalDate.now().minusDays(7), LocalDate.now());
         verify(deliveryRepository).findBySupirIdAndCreatedAtBetween(org.mockito.ArgumentMatchers.eq("DRV-1"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 }
-

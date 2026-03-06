@@ -111,11 +111,11 @@ public class DeliveryService {
             throw new BadRequestException("Transisi status tidak valid");
         }
 
-        delivery.setStatus(target);
-
         if (target == DeliveryStatus.TIBA_DI_TUJUAN) {
-            eventPublisher.publishPengirimanTiba(delivery);
             delivery.setStatus(DeliveryStatus.PENDING_MANDOR_REVIEW);
+            eventPublisher.publishPengirimanTiba(delivery);
+        } else {
+            delivery.setStatus(target);
         }
 
         return delivery;
@@ -153,6 +153,7 @@ public class DeliveryService {
     public Delivery approveByAdmin(UUID id) {
         Delivery delivery = deliveryRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException("Pengiriman tidak ditemukan"));
+        requirePendingAdminReview(delivery);
         delivery.setStatus(DeliveryStatus.APPROVED_ADMIN);
         eventPublisher.publishPengirimanApprovedAdmin(delivery, delivery.getTotalKg());
         return delivery;
@@ -161,6 +162,7 @@ public class DeliveryService {
     public Delivery partialRejectByAdmin(UUID id, int recognizedKg, String reason) {
         Delivery delivery = deliveryRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException("Pengiriman tidak ditemukan"));
+        requirePendingAdminReview(delivery);
 
         if (recognizedKg <= 0 || recognizedKg > delivery.getTotalKg()) {
             throw new BadRequestException("Berat yang diakui harus > 0 dan <= total");
@@ -176,10 +178,17 @@ public class DeliveryService {
     public Delivery rejectByAdmin(UUID id, String reason) {
         Delivery delivery = deliveryRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException("Pengiriman tidak ditemukan"));
+        requirePendingAdminReview(delivery);
 
         delivery.setStatus(DeliveryStatus.REJECTED_ADMIN);
         delivery.setRejectedReason(reason);
         return delivery;
+    }
+
+    private void requirePendingAdminReview(Delivery delivery) {
+        if (delivery.getStatus() != DeliveryStatus.PENDING_ADMIN_REVIEW) {
+            throw new BadRequestException("Pengiriman belum siap di-review admin");
+        }
     }
 
     private Delivery requireOwnedByMandor(String mandorId, UUID id) {
@@ -191,4 +200,3 @@ public class DeliveryService {
         return delivery;
     }
 }
-
