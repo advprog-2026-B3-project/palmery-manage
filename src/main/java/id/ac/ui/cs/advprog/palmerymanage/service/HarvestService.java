@@ -48,7 +48,6 @@ public class HarvestService {
             throw new IllegalArgumentException("Catatan (notes) tidak boleh kosong");
         }
 
-        // Buruh hanya boleh 1x sehari create harvest
         if (harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, request.getHarvestDate())) {
             throw new IllegalArgumentException("Buruh sudah melaporkan Harvest pada tanggal ini.");
         }
@@ -95,7 +94,7 @@ public class HarvestService {
         HarvestResult harvest = harvestResultRepository.findById(harvestId)
                 .orElseThrow(() -> new IllegalArgumentException("Laporan Harvest tidak ditemukan"));
 
-        // Data Immutability
+        //data Immutability
         if (!"PENDING".equals(harvest.getStatus())) {
             throw new IllegalStateException("Laporan ini sudah divalidasi dan tidak dapat diubah lagi.");
         }

@@ -13,13 +13,10 @@ import java.util.UUID;
 @Repository
 public interface HarvestResultRepository extends JpaRepository<HarvestResult, UUID> {
 
-    // Cek apakah buruh sudah input panen hari ini (Guard 1x sehari)
+    //apakah buruh sudah input panen hari ini (Guard 1x sehari)
     boolean existsByWorkerIdAndHarvestDate(UUID workerId, LocalDate harvestDate);
-
-    // [NOMOR 4] Ambil semua panen milik satu buruh — untuk halaman profil Buruh
     List<HarvestResult> findByWorkerId(UUID workerId);
 
-    // Query untuk Riwayat Buruh (Filter: Start Date, End Date, Status)
     @Query("SELECT h FROM HarvestResult h WHERE h.workerId = :workerId " +
             "AND (cast(:startDate as date) IS NULL OR h.harvestDate >= :startDate) " +
             "AND (cast(:endDate as date) IS NULL OR h.harvestDate <= :endDate) " +
@@ -31,7 +28,6 @@ public interface HarvestResultRepository extends JpaRepository<HarvestResult, UU
             @Param("status") String status
     );
 
-    // Query untuk Mandor (Filter: Tanggal spesifik, Worker ID)
     @Query("SELECT h FROM HarvestResult h WHERE " +
             "(cast(:date as date) IS NULL OR h.harvestDate = :date) " +
             "AND (:workerId IS NULL OR h.workerId = :workerId)")
