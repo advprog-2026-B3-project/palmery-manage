@@ -76,8 +76,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: doodpanda
+          password: ${{ secrets.GHCR_PAT }}
 
       - name: Normalize owner name
         id: owner
