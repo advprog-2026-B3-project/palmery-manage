@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - staging
+  pull_request:
+    branches:
+      - '**'
   workflow_dispatch:
 
 jobs:
@@ -46,20 +49,15 @@ jobs:
             -Dsonar.java.binaries=build/classes/java/main
             -Dsonar.exclusions=**/.gradle/**,**/build/**
 
-      - name: Sonar Vulnerability Gate (non-main)
-        if: github.ref != 'refs/heads/main'
+      - name: Sonar Vulnerability Gate (PR)
+        if: github.event_name == 'pull_request'
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
           SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY || secrets.SONAR_PROJECT_KEY }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            query="pullRequest=${{ github.event.pull_request.number }}"
-          else
-            query="branch=${GITHUB_REF_NAME}"
-          fi
-
+          query="pullRequest=${{ github.event.pull_request.number }}"
           response=$(curl -sS -u "${SONAR_TOKEN}:" \
             "${SONAR_HOST_URL}/api/issues/search?componentKeys=${SONAR_PROJECT_KEY}&types=VULNERABILITY&resolved=false&ps=1&${query}")
           api_errors=$(echo "${response}" | jq '.errors | length // 0')
@@ -84,6 +82,7 @@ jobs:
 
   publish:
     needs: sonar
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     permissions:
       contents: read
