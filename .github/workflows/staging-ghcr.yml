@@ -46,6 +46,32 @@ jobs:
             -Dsonar.java.binaries=build/classes/java/main
             -Dsonar.exclusions=**/.gradle/**,**/build/**
 
+      - name: Sonar Vulnerability Gate (non-main)
+        if: github.ref != 'refs/heads/main'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+          SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY || secrets.SONAR_PROJECT_KEY }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            query="pullRequest=${{ github.event.pull_request.number }}"
+          else
+            query="branch=${GITHUB_REF_NAME}"
+          fi
+
+          response=$(curl -sS -u "${SONAR_TOKEN}:" \
+            "${SONAR_HOST_URL}/api/issues/search?componentKeys=${SONAR_PROJECT_KEY}&types=VULNERABILITY&resolved=false&ps=1&${query}")
+          api_errors=$(echo "${response}" | jq '.errors | length // 0')
+          if [ "${api_errors}" -gt 0 ]; then
+            echo "Sonar API returned errors:"
+            echo "${response}" | jq -c '.errors'
+            exit 1
+          fi
+          total=$(echo "${response}" | jq -r '.total // 0')
+          echo "Sonar unresolved vulnerabilities: ${total}"
+          [ "${total}" -eq 0 ]
+
       - name: SonarCloud Quality Gate
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: SonarSource/sonarqube-quality-gate-action@master
