@@ -44,6 +44,7 @@ class HarvestServiceTest {
 
     @BeforeEach
     void setUp() {
+        org.springframework.test.util.ReflectionTestUtils.setField(harvestService, "useDummyAssignment", true);
         workerId = UUID.randomUUID();
         mandorId = UUID.randomUUID();
         plantationId = UUID.randomUUID();

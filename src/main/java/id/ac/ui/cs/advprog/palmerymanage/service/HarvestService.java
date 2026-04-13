@@ -16,17 +16,29 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.time.LocalDate;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.client.RestClient;
+import org.springframework.lang.NonNull;
 
 @Service
 public class HarvestService {
 
     private final HarvestResultRepository harvestResultRepository;
     private final HarvestEventPublisher eventPublisher;
+    private final RestClient restClient;
+
+    @Value("${assignment.api.url:http://localhost:8080/api/assignment}")
+    private String assignmentApiUrl;
+    
+    // Toggle on/off untuk dummy. Secara default berjalan dalam mode dummy (true)
+    @Value("${assignment.api.dummy:true}")
+    private boolean useDummyAssignment;
 
     public HarvestService(HarvestResultRepository harvestResultRepository,
                           HarvestEventPublisher eventPublisher) {
         this.harvestResultRepository = harvestResultRepository;
         this.eventPublisher = eventPublisher;
+        this.restClient = RestClient.create();
     }
 
     @Transactional
@@ -77,15 +89,33 @@ public class HarvestService {
         return harvestResultRepository.save(result);
     }
 
-    // mock api
     private boolean checkIsAnakBuah(UUID mandorId, UUID workerId) {
-        // TODO: ganti HTTP Call ke API Assignment
-        System.out.println("[MOCKING] Mengecek apakah Buruh " + workerId + " adalah bawahan Mandor " + mandorId);
-        return true; // sementara selalu true
+        // mode dummy aktif langsung return true
+        if (useDummyAssignment) {
+            System.out.println("[MOCKING/DUMMY] Mengecek apakah Buruh " + workerId + " adalah bawahan Mandor " + mandorId);
+            return true;
+        }
+
+        try {
+            String url = assignmentApiUrl + "/check?mandorId=" + mandorId + "&workerId=" + workerId;
+            
+            System.out.println("[API CALL] Mengecek asignment ke: " + url);
+            
+            Boolean isAnakBuah = restClient.get()
+                    .uri(url)
+                    .retrieve()
+                    .body(Boolean.class);
+                    
+            return Boolean.TRUE.equals(isAnakBuah);
+        } catch (Exception e) {
+            System.err.println("[ERROR] Gagal memanggil API Assignment: " + e.getMessage());
+            // Default ke false 
+            return false; 
+        }
     }
 
     @Transactional
-    public HarvestResult validateHarvest(UUID mandorId, UUID harvestId, ValidationRequestDto request) {
+    public HarvestResult validateHarvest(@NonNull UUID mandorId, @NonNull UUID harvestId, @NonNull ValidationRequestDto request) {
 
         if (request.getStatus() == null || request.getStatus().trim().isEmpty()) {
             throw new IllegalArgumentException("Status validasi tidak boleh kosong");

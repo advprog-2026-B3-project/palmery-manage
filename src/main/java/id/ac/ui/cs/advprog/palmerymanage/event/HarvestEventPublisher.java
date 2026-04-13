@@ -1,6 +1,7 @@
 package id.ac.ui.cs.advprog.palmerymanage.event;
 
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -12,7 +13,7 @@ public class HarvestEventPublisher {
         this.applicationEventPublisher = applicationEventPublisher;
     }
 
-    public void publishHarvestApproved(HarvestApprovedEvent event) {
+    public void publishHarvestApproved(@NonNull HarvestApprovedEvent event) {
         applicationEventPublisher.publishEvent(event);
         System.out.println("[EVENT] HarvestApproved dikirim: harvestId=" + event.harvestId()
                 + ", workerId=" + event.workerId()
