@@ -14,10 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
-      SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
       - name: Checkout
@@ -36,30 +32,16 @@ jobs:
           chmod +x gradlew
           ./gradlew test jacocoTestReport --no-daemon
 
-      - name: Validate SonarCloud Configuration
-        run: |
-          if [ -z "$SONAR_PROJECT_KEY" ]; then
-            echo "::error::Missing GitHub secret SONAR_PROJECT_KEY"
-            exit 1
-          fi
-          if [ -z "$SONAR_ORGANIZATION" ]; then
-            echo "::error::Missing GitHub secret SONAR_ORGANIZATION"
-            exit 1
-          fi
-          if [ -z "$SONAR_TOKEN" ]; then
-            echo "::error::Missing GitHub secret SONAR_TOKEN"
-            exit 1
-          fi
-
       - name: SonarCloud Scan
         uses: sonarsource/sonarqube-scan-action@v6
         env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
         with:
           projectBaseDir: .
           args: >
-            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
-            -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
             -Dsonar.projectName=palmery-manage
             -Dsonar.sourceEncoding=UTF-8
             -Dsonar.sources=src/main
@@ -72,6 +54,7 @@ jobs:
         uses: SonarSource/sonarqube-quality-gate-action@master
         timeout-minutes: 5
         env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
         with:
           pollingTimeoutSec: 300
