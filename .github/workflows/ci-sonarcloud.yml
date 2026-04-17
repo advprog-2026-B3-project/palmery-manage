@@ -28,6 +28,7 @@ jobs:
           java-version: "21"
 
       - name: Build, test, and generate coverage
+        working-directory: palmery-manage
         run: |
           chmod +x gradlew
           ./gradlew test jacocoTestReport --no-daemon
@@ -38,7 +39,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
         with:
-          projectBaseDir: .
+          projectBaseDir: palmery-manage
           args: >
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
