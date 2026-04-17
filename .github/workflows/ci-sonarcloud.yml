@@ -28,8 +28,8 @@ jobs:
           java-version: "21"
 
       - name: Build, test, and generate coverage
-        working-directory: palmery-manage
         run: |
+          if [ -d palmery-manage ]; then cd palmery-manage; fi
           chmod +x gradlew
           ./gradlew test jacocoTestReport --no-daemon
 
@@ -39,16 +39,16 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
         with:
-          projectBaseDir: palmery-manage
+          projectBaseDir: .
           args: >
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
             -Dsonar.projectName=palmery-manage
             -Dsonar.sourceEncoding=UTF-8
-            -Dsonar.sources=src/main
-            -Dsonar.tests=src/test
-            -Dsonar.java.binaries=build/classes/java/main
-            -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/test/jacocoTestReport.xml
+            -Dsonar.sources=src/main,palmery-manage/src/main
+            -Dsonar.tests=src/test,palmery-manage/src/test
+            -Dsonar.java.binaries=build/classes/java/main,palmery-manage/build/classes/java/main
+            -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/test/jacocoTestReport.xml,palmery-manage/build/reports/jacoco/test/jacocoTestReport.xml
             -Dsonar.exclusions=**/.gradle/**,**/build/**
 
       - name: SonarCloud Quality Gate
