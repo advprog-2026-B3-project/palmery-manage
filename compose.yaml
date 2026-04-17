@@ -1,0 +1,38 @@
+services:
+  manage-postgres:
+    image: postgres:16-alpine
+    container_name: palmery-manage-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-managedb}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5433:5432"
+    volumes:
+      - manage-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-managedb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  palmery-manage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: palmery-manage-app
+    depends_on:
+      manage-postgres:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-8081}
+      POSTGRES_URL: jdbc:postgresql://manage-postgres:5432/managedb
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
+      SPRING_JPA_SHOW_SQL: ${SPRING_JPA_SHOW_SQL:-false}
+    ports:
+      - "8081:8081"
+
+volumes:
+  manage-postgres-data:

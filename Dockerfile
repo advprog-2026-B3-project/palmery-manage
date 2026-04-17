@@ -6,7 +6,7 @@ COPY gradle ./gradle
 RUN chmod +x gradlew
 COPY src ./src
 RUN ./gradlew --no-daemon bootJar
-RUN ls build/libs/*.jar | grep -v -- '-plain\.jar$' | head -n 1 | xargs -I{} cp "{}" /app/app.jar
+RUN ls build/libs/*.jar | grep -v -- '-plain\\.jar$' | head -n 1 | xargs -I{} cp "{}" /app/app.jar
 
 FROM eclipse-temurin:21-jre-alpine
 
