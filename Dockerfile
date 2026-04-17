@@ -1,4 +1,4 @@
-FROM gradle:8.14.4-jdk21-alpine AS builder
+FROM gradle:9.3.0-jdk21-alpine AS builder
 
 WORKDIR /app
 COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts ./

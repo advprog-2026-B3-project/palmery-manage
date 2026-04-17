@@ -29,6 +29,7 @@ jobs:
 
       - name: Build, test, and generate coverage
         run: |
+          if [ -d palmery-manage ]; then cd palmery-manage; fi
           chmod +x gradlew
           ./gradlew test jacocoTestReport --no-daemon
 
