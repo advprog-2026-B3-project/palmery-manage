@@ -11,6 +11,16 @@ import java.util.*;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler({BadRequestException.class, OverWeightException.class, IllegalArgumentException.class, IllegalStateException.class})
+    public ResponseEntity<Map<String, Object>> handleBadRequest(RuntimeException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<Map<String, Object>> handleForbidden(ForbiddenException ex) {
+        return buildResponse(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
     @ExceptionHandler(PlantationNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(PlantationNotFoundException ex) {
         return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());

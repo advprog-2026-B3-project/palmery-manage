@@ -6,13 +6,9 @@ import id.ac.ui.cs.advprog.palmerymanage.exception.ForbiddenException;
 import id.ac.ui.cs.advprog.palmerymanage.exception.OverWeightException;
 import id.ac.ui.cs.advprog.palmerymanage.model.Delivery;
 import id.ac.ui.cs.advprog.palmerymanage.model.DeliveryStatus;
-import id.ac.ui.cs.advprog.palmerymanage.model.Driver;
-import id.ac.ui.cs.advprog.palmerymanage.model.Harvest;
-import id.ac.ui.cs.advprog.palmerymanage.model.Mandor;
 import id.ac.ui.cs.advprog.palmerymanage.repository.DeliveryRepository;
-import id.ac.ui.cs.advprog.palmerymanage.repository.DriverRepository;
-import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestRepository;
-import id.ac.ui.cs.advprog.palmerymanage.repository.MandorRepository;
+import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
+import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,52 +26,56 @@ public class DeliveryService {
     static final int MAX_TOTAL_KG = 400;
 
     private final DeliveryRepository deliveryRepository;
-    private final DriverRepository driverRepository;
-    private final HarvestRepository harvestRepository;
-    private final MandorRepository mandorRepository;
+    private final HarvestResultRepository harvestResultRepository;
     private final DeliveryEventPublisher eventPublisher;
 
     public DeliveryService(DeliveryRepository deliveryRepository,
-                           DriverRepository driverRepository,
-                           HarvestRepository harvestRepository,
-                           MandorRepository mandorRepository,
+                           HarvestResultRepository harvestResultRepository,
                            DeliveryEventPublisher eventPublisher) {
         this.deliveryRepository = deliveryRepository;
-        this.driverRepository = driverRepository;
-        this.harvestRepository = harvestRepository;
-        this.mandorRepository = mandorRepository;
+        this.harvestResultRepository = harvestResultRepository;
         this.eventPublisher = eventPublisher;
     }
 
     public Delivery createPengiriman(String mandorId, CreatePengirimanRequest request) {
-        Mandor mandor = mandorRepository.findById(mandorId)
-                .orElseThrow(() -> new BadRequestException("Mandor tidak ditemukan"));
-
-        Driver driver = driverRepository.findById(request.supirId())
-                .orElseThrow(() -> new BadRequestException("Supir tidak ditemukan"));
-        if (!driver.getKebunId().equals(mandor.getKebunId())) {
-            throw new ForbiddenException("Supir tidak berada di kebun yang sama");
+        if (mandorId == null || mandorId.isBlank()) {
+            throw new BadRequestException("Mandor tidak ditemukan");
         }
 
-        List<Harvest> panenList = harvestRepository.findAllById(request.panenIds());
-        if (panenList.size() != request.panenIds().size()) {
+        List<UUID> panenUuids = request.panenIds().stream().map(id -> {
+            try {
+                return UUID.fromString(id);
+            } catch (IllegalArgumentException ex) {
+                throw new BadRequestException("Format panen_id tidak valid: " + id);
+            }
+        }).toList();
+
+        List<HarvestResult> panenList = harvestResultRepository.findAllById(panenUuids);
+        if (panenList.size() != panenUuids.size()) {
             throw new BadRequestException("Beberapa hasil panen tidak ditemukan");
         }
 
-        boolean hasNonReady = panenList.stream().anyMatch(panen -> !panen.isReadyForDelivery());
+        boolean hasNonReady = panenList.stream().anyMatch(panen -> !Boolean.TRUE.equals(panen.getReadyForDelivery()));
         if (hasNonReady) {
             throw new BadRequestException("Semua hasil panen harus berstatus Siap Angkut");
         }
 
-        int total = panenList.stream().mapToInt(Harvest::getBeratKg).sum();
+        int total = (int) Math.round(panenList.stream().mapToDouble(p -> p.getKgHarvested() == null ? 0.0 : p.getKgHarvested()).sum());
         if (total > MAX_TOTAL_KG) {
             throw new OverWeightException("Total berat maksimum 400 kg");
+        }
+
+        // constraint kepemilikan (mandor hanya boleh pilih panen yang dia validasi)
+        boolean notOwned = panenList.stream().anyMatch(p -> p.getMandorId() == null || !p.getMandorId().toString().equals(mandorId));
+        if (notOwned) {
+            throw new ForbiddenException("Panen tidak berada di bawah mandor ini");
         }
 
         Delivery delivery = new Delivery();
         delivery.setSupirId(request.supirId());
         delivery.setMandorId(mandorId);
-        delivery.setKebunId(mandor.getKebunId());
+        // Simpan plantationId dari panen pertama sebagai kebun_id untuk filtering sederhana
+        delivery.setKebunId(panenList.getFirst().getPlantationId().toString());
         delivery.setTotalKg(total);
         delivery.setPanenIds(request.panenIds());
         delivery.setStatus(DeliveryStatus.MEMUAT);

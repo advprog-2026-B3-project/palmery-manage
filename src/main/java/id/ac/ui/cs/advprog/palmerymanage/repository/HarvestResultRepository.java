@@ -35,4 +35,6 @@ public interface HarvestResultRepository extends JpaRepository<HarvestResult, UU
             @Param("date") LocalDate date,
             @Param("workerId") UUID workerId
     );
+
+    List<HarvestResult> findByReadyForDeliveryIsTrue();
 }
