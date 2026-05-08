@@ -6,9 +6,11 @@ import id.ac.ui.cs.advprog.palmerymanage.exception.ForbiddenException;
 import id.ac.ui.cs.advprog.palmerymanage.exception.OverWeightException;
 import id.ac.ui.cs.advprog.palmerymanage.model.Delivery;
 import id.ac.ui.cs.advprog.palmerymanage.model.DeliveryStatus;
+import id.ac.ui.cs.advprog.palmerymanage.model.Driver;
 import id.ac.ui.cs.advprog.palmerymanage.model.Harvest;
 import id.ac.ui.cs.advprog.palmerymanage.model.Mandor;
 import id.ac.ui.cs.advprog.palmerymanage.repository.DeliveryRepository;
+import id.ac.ui.cs.advprog.palmerymanage.repository.DriverRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.MandorRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +39,9 @@ class DeliveryServiceTest {
     private DeliveryRepository deliveryRepository;
 
     @Mock
+    private DriverRepository driverRepository;
+
+    @Mock
     private HarvestRepository harvestRepository;
 
     @Mock
@@ -62,6 +67,11 @@ class DeliveryServiceTest {
     void createPengirimanWithinLimitSucceeds() {
         CreatePengirimanRequest request = new CreatePengirimanRequest("DRV-1", List.of("PAN-1", "PAN-2"));
 
+        Driver driver = new Driver();
+        driver.setId("DRV-1");
+        driver.setNama("Eko");
+        driver.setKebunId("KEB-1");
+
         Harvest h1 = new Harvest();
         h1.setId("PAN-1");
         h1.setBeratKg(200);
@@ -73,6 +83,7 @@ class DeliveryServiceTest {
         h2.setReadyForDelivery(true);
 
         when(mandorRepository.findById("MDR-1")).thenReturn(Optional.of(mandor));
+        when(driverRepository.findById("DRV-1")).thenReturn(Optional.of(driver));
         when(harvestRepository.findAllById(request.panenIds())).thenReturn(List.of(h1, h2));
 
         ArgumentCaptor<Delivery> captor = ArgumentCaptor.forClass(Delivery.class);
@@ -90,6 +101,11 @@ class DeliveryServiceTest {
     void createPengirimanOverLimitThrows() {
         CreatePengirimanRequest request = new CreatePengirimanRequest("DRV-1", List.of("PAN-1", "PAN-2"));
 
+        Driver driver = new Driver();
+        driver.setId("DRV-1");
+        driver.setNama("Eko");
+        driver.setKebunId("KEB-1");
+
         Harvest h1 = new Harvest();
         h1.setId("PAN-1");
         h1.setBeratKg(300);
@@ -101,6 +117,7 @@ class DeliveryServiceTest {
         h2.setReadyForDelivery(true);
 
         when(mandorRepository.findById("MDR-1")).thenReturn(Optional.of(mandor));
+        when(driverRepository.findById("DRV-1")).thenReturn(Optional.of(driver));
         when(harvestRepository.findAllById(request.panenIds())).thenReturn(List.of(h1, h2));
 
         assertThrows(OverWeightException.class, () -> deliveryService.createPengiriman("MDR-1", request));
@@ -192,4 +209,3 @@ class DeliveryServiceTest {
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 }
-
