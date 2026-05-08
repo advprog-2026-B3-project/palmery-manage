@@ -15,6 +15,8 @@ import id.ac.ui.cs.advprog.palmerymanage.repository.MandorRepository;
 import id.ac.ui.cs.advprog.palmerymanage.service.DeliveryService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -52,16 +54,24 @@ public class DeliveryController {
         this.harvestRepository = harvestRepository;
     }
 
-    private String currentUserId(String header) {
-        return header == null || header.isBlank() ? "MDR-1" : header;
+    private String resolveUserId(Authentication authentication, String headerFallback, String defaultFallback) {
+        if (authentication != null && authentication.getName() != null && !authentication.getName().isBlank()) {
+            return authentication.getName();
+        }
+        if (headerFallback != null && !headerFallback.isBlank()) {
+            return headerFallback;
+        }
+        return defaultFallback;
     }
 
     // Mandor: GET /mandor/drivers?search=
     @GetMapping("/mandor/drivers")
+    @PreAuthorize("hasRole('MANDOR')")
     public ResponseEntity<List<Map<String, Object>>> driversForMandor(
             @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader,
+            Authentication authentication,
             @RequestParam(value = "search", required = false, defaultValue = "") String search) {
-        String mandorId = currentUserId(mandorIdHeader);
+        String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
         Mandor mandor = mandorRepository.findById(mandorId).orElseThrow();
         List<Driver> drivers = driverRepository.findByKebunIdAndNamaContainingIgnoreCase(
                 mandor.getKebunId(), search);
@@ -78,9 +88,11 @@ public class DeliveryController {
 
     // Mandor: panen siap angkut
     @GetMapping("/mandor/panen/siap-angkut")
+    @PreAuthorize("hasRole('MANDOR')")
     public ResponseEntity<List<Map<String, Object>>> panenSiapAngkut(
-            @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader) {
-        String mandorId = currentUserId(mandorIdHeader);
+            @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader,
+            Authentication authentication) {
+        String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
         Mandor mandor = mandorRepository.findById(mandorId).orElseThrow();
         List<Harvest> panen = harvestRepository.findByKebunIdAndReadyForDeliveryIsTrue(mandor.getKebunId());
         List<Map<String, Object>> body = panen.stream().map(h -> {
@@ -97,30 +109,36 @@ public class DeliveryController {
 
     // Mandor: buat pengiriman baru
     @PostMapping("/mandor/pengiriman")
+    @PreAuthorize("hasRole('MANDOR')")
     public ResponseEntity<Map<String, Object>> createPengiriman(
             @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader,
+            Authentication authentication,
             @Valid @RequestBody CreatePengirimanRequest request) {
-        String mandorId = currentUserId(mandorIdHeader);
+        String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
         Delivery delivery = deliveryService.createPengiriman(mandorId, request);
         return ResponseEntity.ok(toDeliveryResponse(delivery));
     }
 
     // Supir: list pengiriman aktif
     @GetMapping("/supir/pengiriman/aktif")
+    @PreAuthorize("hasRole('SUPIR')")
     public ResponseEntity<List<Map<String, Object>>> pengirimanAktifSupir(
-            @RequestHeader(value = "X-User-Id", required = false) String supirIdHeader) {
-        String supirId = supirIdHeader == null || supirIdHeader.isBlank() ? "DRV-1" : supirIdHeader;
+            @RequestHeader(value = "X-User-Id", required = false) String supirIdHeader,
+            Authentication authentication) {
+        String supirId = resolveUserId(authentication, supirIdHeader, "DRV-1");
         List<Delivery> list = deliveryService.pengirimanAktifSupir(supirId);
         return ResponseEntity.ok(list.stream().map(this::toDeliveryResponse).toList());
     }
 
     // Supir: riwayat
     @GetMapping("/supir/pengiriman/riwayat")
+    @PreAuthorize("hasRole('SUPIR')")
     public ResponseEntity<List<Map<String, Object>>> riwayatSupir(
             @RequestHeader(value = "X-User-Id", required = false) String supirIdHeader,
+            Authentication authentication,
             @RequestParam("from") String from,
             @RequestParam("to") String to) {
-        String supirId = supirIdHeader == null || supirIdHeader.isBlank() ? "DRV-1" : supirIdHeader;
+        String supirId = resolveUserId(authentication, supirIdHeader, "DRV-1");
         LocalDate fromDate = LocalDate.parse(from);
         LocalDate toDate = LocalDate.parse(to);
         List<Delivery> list = deliveryService.riwayatSupir(supirId, fromDate, toDate);
@@ -129,11 +147,13 @@ public class DeliveryController {
 
     // Supir: update status
     @PatchMapping("/supir/pengiriman/{id}/status")
+    @PreAuthorize("hasRole('SUPIR')")
     public ResponseEntity<Map<String, Object>> updateStatusSupir(
             @RequestHeader(value = "X-User-Id", required = false) String supirIdHeader,
+            Authentication authentication,
             @PathVariable("id") UUID id,
             @Valid @RequestBody UpdateStatusRequest request) {
-        String supirId = supirIdHeader == null || supirIdHeader.isBlank() ? "DRV-1" : supirIdHeader;
+        String supirId = resolveUserId(authentication, supirIdHeader, "DRV-1");
         DeliveryStatus target = DeliveryStatus.valueOf(request.status());
         Delivery delivery = deliveryService.updateStatusSupir(supirId, id, target);
         return ResponseEntity.ok(toDeliveryResponse(delivery));
@@ -141,9 +161,11 @@ public class DeliveryController {
 
     // Mandor: monitor truk
     @GetMapping("/mandor/pengiriman/aktif")
+    @PreAuthorize("hasRole('MANDOR')")
     public ResponseEntity<List<Map<String, Object>>> pengirimanAktifMandor(
-            @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader) {
-        String mandorId = currentUserId(mandorIdHeader);
+            @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader,
+            Authentication authentication) {
+        String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
         Mandor mandor = mandorRepository.findById(mandorId).orElseThrow();
         List<Delivery> list = deliveryService.pengirimanAktifKebun(mandor.getKebunId());
         return ResponseEntity.ok(list.stream().map(this::toDeliveryResponse).toList());
@@ -151,38 +173,52 @@ public class DeliveryController {
 
     // Mandor: approve / reject
     @PostMapping("/mandor/pengiriman/{id}/approve")
+    @PreAuthorize("hasRole('MANDOR')")
     public ResponseEntity<Map<String, Object>> approveMandor(
             @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader,
+            Authentication authentication,
             @PathVariable("id") UUID id) {
-        String mandorId = currentUserId(mandorIdHeader);
+        String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
         Delivery delivery = deliveryService.approveByMandor(mandorId, id);
         return ResponseEntity.ok(toDeliveryResponse(delivery));
     }
 
     @PostMapping("/mandor/pengiriman/{id}/reject")
+    @PreAuthorize("hasRole('MANDOR')")
     public ResponseEntity<Map<String, Object>> rejectMandor(
             @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader,
+            Authentication authentication,
             @PathVariable("id") UUID id,
             @Valid @RequestBody RejectRequest request) {
-        String mandorId = currentUserId(mandorIdHeader);
+        String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
         Delivery delivery = deliveryService.rejectByMandor(mandorId, id, request.reason());
         return ResponseEntity.ok(toDeliveryResponse(delivery));
     }
 
     // Admin
     @GetMapping("/admin/pengiriman/pending")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<Map<String, Object>>> pendingAdmin() {
         List<Delivery> list = deliveryService.pendingAdmin();
         return ResponseEntity.ok(list.stream().map(this::toDeliveryResponse).toList());
     }
 
+    @GetMapping("/admin/pengiriman/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Map<String, Object>> detailAdmin(@PathVariable("id") UUID id) {
+        Delivery delivery = deliveryService.getById(id);
+        return ResponseEntity.ok(toDeliveryResponse(delivery));
+    }
+
     @PostMapping("/admin/pengiriman/{id}/approve")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> approveAdmin(@PathVariable("id") UUID id) {
         Delivery delivery = deliveryService.approveByAdmin(id);
         return ResponseEntity.ok(toDeliveryResponse(delivery));
     }
 
     @PostMapping("/admin/pengiriman/{id}/partial-reject")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> partialRejectAdmin(
             @PathVariable("id") UUID id,
             @Valid @RequestBody PartialRejectRequest request) {
@@ -191,6 +227,7 @@ public class DeliveryController {
     }
 
     @PostMapping("/admin/pengiriman/{id}/reject")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> rejectAdmin(
             @PathVariable("id") UUID id,
             @Valid @RequestBody RejectRequest request) {
@@ -214,4 +251,3 @@ public class DeliveryController {
         return map;
     }
 }
-

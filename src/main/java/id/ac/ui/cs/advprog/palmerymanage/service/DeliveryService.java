@@ -6,9 +6,11 @@ import id.ac.ui.cs.advprog.palmerymanage.exception.ForbiddenException;
 import id.ac.ui.cs.advprog.palmerymanage.exception.OverWeightException;
 import id.ac.ui.cs.advprog.palmerymanage.model.Delivery;
 import id.ac.ui.cs.advprog.palmerymanage.model.DeliveryStatus;
+import id.ac.ui.cs.advprog.palmerymanage.model.Driver;
 import id.ac.ui.cs.advprog.palmerymanage.model.Harvest;
 import id.ac.ui.cs.advprog.palmerymanage.model.Mandor;
 import id.ac.ui.cs.advprog.palmerymanage.repository.DeliveryRepository;
+import id.ac.ui.cs.advprog.palmerymanage.repository.DriverRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.MandorRepository;
 import org.springframework.stereotype.Service;
@@ -28,15 +30,18 @@ public class DeliveryService {
     static final int MAX_TOTAL_KG = 400;
 
     private final DeliveryRepository deliveryRepository;
+    private final DriverRepository driverRepository;
     private final HarvestRepository harvestRepository;
     private final MandorRepository mandorRepository;
     private final DeliveryEventPublisher eventPublisher;
 
     public DeliveryService(DeliveryRepository deliveryRepository,
+                           DriverRepository driverRepository,
                            HarvestRepository harvestRepository,
                            MandorRepository mandorRepository,
                            DeliveryEventPublisher eventPublisher) {
         this.deliveryRepository = deliveryRepository;
+        this.driverRepository = driverRepository;
         this.harvestRepository = harvestRepository;
         this.mandorRepository = mandorRepository;
         this.eventPublisher = eventPublisher;
@@ -45,6 +50,12 @@ public class DeliveryService {
     public Delivery createPengiriman(String mandorId, CreatePengirimanRequest request) {
         Mandor mandor = mandorRepository.findById(mandorId)
                 .orElseThrow(() -> new BadRequestException("Mandor tidak ditemukan"));
+
+        Driver driver = driverRepository.findById(request.supirId())
+                .orElseThrow(() -> new BadRequestException("Supir tidak ditemukan"));
+        if (!driver.getKebunId().equals(mandor.getKebunId())) {
+            throw new ForbiddenException("Supir tidak berada di kebun yang sama");
+        }
 
         List<Harvest> panenList = harvestRepository.findAllById(request.panenIds());
         if (panenList.size() != request.panenIds().size()) {
@@ -150,17 +161,20 @@ public class DeliveryService {
         return deliveryRepository.findByStatus(DeliveryStatus.PENDING_ADMIN_REVIEW);
     }
 
-    public Delivery approveByAdmin(UUID id) {
-        Delivery delivery = deliveryRepository.findById(id)
+    public Delivery getById(UUID id) {
+        return deliveryRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException("Pengiriman tidak ditemukan"));
+    }
+
+    public Delivery approveByAdmin(UUID id) {
+        Delivery delivery = getById(id);
         delivery.setStatus(DeliveryStatus.APPROVED_ADMIN);
         eventPublisher.publishPengirimanApprovedAdmin(delivery, delivery.getTotalKg());
         return delivery;
     }
 
     public Delivery partialRejectByAdmin(UUID id, int recognizedKg, String reason) {
-        Delivery delivery = deliveryRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Pengiriman tidak ditemukan"));
+        Delivery delivery = getById(id);
 
         if (recognizedKg <= 0 || recognizedKg > delivery.getTotalKg()) {
             throw new BadRequestException("Berat yang diakui harus > 0 dan <= total");
@@ -174,8 +188,7 @@ public class DeliveryService {
     }
 
     public Delivery rejectByAdmin(UUID id, String reason) {
-        Delivery delivery = deliveryRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Pengiriman tidak ditemukan"));
+        Delivery delivery = getById(id);
 
         delivery.setStatus(DeliveryStatus.REJECTED_ADMIN);
         delivery.setRejectedReason(reason);
@@ -183,12 +196,10 @@ public class DeliveryService {
     }
 
     private Delivery requireOwnedByMandor(String mandorId, UUID id) {
-        Delivery delivery = deliveryRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Pengiriman tidak ditemukan"));
+        Delivery delivery = getById(id);
         if (!delivery.getMandorId().equals(mandorId)) {
             throw new ForbiddenException("Mandor tidak berhak mengubah pengiriman ini");
         }
         return delivery;
     }
 }
-
