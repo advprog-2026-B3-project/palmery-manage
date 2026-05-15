@@ -5,7 +5,9 @@ import id.ac.ui.cs.advprog.palmerymanage.dto.ValidationRequestDto;
 import id.ac.ui.cs.advprog.palmerymanage.event.HarvestApprovedEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.HarvestEventPublisher;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
+import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
+import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +30,9 @@ class HarvestServiceTest {
 
     @Mock
     private HarvestResultRepository harvestResultRepository;
+    
+    @Mock
+    private PlantationRepository plantationRepository;
 
     @Mock
     private HarvestEventPublisher eventPublisher;
@@ -57,11 +62,13 @@ class HarvestServiceTest {
         validRequest.setKgHarvested(100f);
         validRequest.setNotes("Panen hari ini lancar");
 
+        Plantation plantation = Plantation.builder().id(plantationId).name("Kebun A").build();
+
         pendingHarvest = HarvestResult.builder()
                 .id(harvestId)
                 .workerId(workerId)
                 .mandorId(mandorId)
-                .plantationId(plantationId)
+                .plantation(plantation)
                 .harvestDate(LocalDate.now())
                 .kgHarvested(100f)
                 .notes("Panen hari ini lancar")
@@ -78,6 +85,7 @@ class HarvestServiceTest {
     void submitHarvest_success() {
         when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
                 .thenReturn(false);
+        when(plantationRepository.findById(plantationId)).thenReturn(Optional.of(pendingHarvest.getPlantation()));
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
 
         HarvestResult result = harvestService.submitHarvest(workerId, validRequest);
@@ -97,6 +105,7 @@ class HarvestServiceTest {
 
         when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
                 .thenReturn(false);
+        when(plantationRepository.findById(plantationId)).thenReturn(Optional.of(pendingHarvest.getPlantation()));
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
 
         HarvestResult result = harvestService.submitHarvest(workerId, validRequest);

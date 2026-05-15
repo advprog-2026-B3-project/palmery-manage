@@ -31,8 +31,9 @@ public class HarvestResult {
     @Column(name = "mandor_id", nullable = false)
     private UUID mandorId;
 
-    @Column(name = "plantation_id", nullable = false)
-    private UUID plantationId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "plantation_id", nullable = false)
+    private Plantation plantation;
 
     @Column(name = "harvest_date", nullable = false)
     private LocalDate harvestDate;

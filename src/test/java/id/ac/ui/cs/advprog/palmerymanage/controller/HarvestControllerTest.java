@@ -3,6 +3,7 @@ package id.ac.ui.cs.advprog.palmerymanage.controller;
 import id.ac.ui.cs.advprog.palmerymanage.dto.HarvestRequestDto;
 import id.ac.ui.cs.advprog.palmerymanage.dto.ValidationRequestDto;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
+import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.service.HarvestService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -53,11 +54,12 @@ class HarvestControllerTest {
         mandorId = UUID.randomUUID();
         harvestId = UUID.randomUUID();
 
+        Plantation plantation = Plantation.builder().id(UUID.randomUUID()).build();
         sampleHarvest = HarvestResult.builder()
                 .id(harvestId)
                 .workerId(workerId)
                 .mandorId(mandorId)
-                .plantationId(UUID.randomUUID())
+                .plantation(plantation)
                 .harvestDate(LocalDate.now())
                 .kgHarvested(100f)
                 .notes("Panen hari ini lancar")

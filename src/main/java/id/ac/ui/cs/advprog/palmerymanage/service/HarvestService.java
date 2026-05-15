@@ -6,7 +6,9 @@ import id.ac.ui.cs.advprog.palmerymanage.event.HarvestEventPublisher;
 import id.ac.ui.cs.advprog.palmerymanage.event.HarvestApprovedEvent;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestPhoto;
+import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
+import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,7 @@ import org.springframework.lang.NonNull;
 public class HarvestService {
 
     private final HarvestResultRepository harvestResultRepository;
+    private final PlantationRepository plantationRepository;
     private final HarvestEventPublisher eventPublisher;
     private final RestClient restClient;
 
@@ -35,8 +38,10 @@ public class HarvestService {
     private boolean useDummyAssignment;
 
     public HarvestService(HarvestResultRepository harvestResultRepository,
+                          PlantationRepository plantationRepository,
                           HarvestEventPublisher eventPublisher) {
         this.harvestResultRepository = harvestResultRepository;
+        this.plantationRepository = plantationRepository;
         this.eventPublisher = eventPublisher;
         this.restClient = RestClient.create();
     }
@@ -64,10 +69,13 @@ public class HarvestService {
             throw new IllegalArgumentException("Buruh sudah melaporkan Harvest pada tanggal ini.");
         }
 
+        Plantation plantation = plantationRepository.findById(request.getPlantationId())
+                .orElseThrow(() -> new IllegalArgumentException("Kebun tidak ditemukan"));
+
         HarvestResult result = HarvestResult.builder()
                 .workerId(workerId)
                 .mandorId(request.getMandorId())
-                .plantationId(request.getPlantationId())
+                .plantation(plantation)
                 .harvestDate(request.getHarvestDate())
                 .kgHarvested(request.getKgHarvested())
                 .notes(request.getNotes())
@@ -150,7 +158,7 @@ public class HarvestService {
                     harvest.getId(),
                     harvest.getWorkerId().toString(),
                     harvest.getMandorId().toString(),
-                    harvest.getPlantationId().toString(),
+                    harvest.getPlantation().getId().toString(),
                     harvest.getKgHarvested(),
                     Instant.now()
             ));
