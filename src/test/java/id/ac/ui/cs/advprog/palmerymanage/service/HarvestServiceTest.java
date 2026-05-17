@@ -2,12 +2,12 @@ package id.ac.ui.cs.advprog.palmerymanage.service;
 
 import id.ac.ui.cs.advprog.palmerymanage.dto.HarvestRequestDto;
 import id.ac.ui.cs.advprog.palmerymanage.dto.ValidationRequestDto;
+import id.ac.ui.cs.advprog.palmerymanage.dto.PlantationResponseDto;
 import id.ac.ui.cs.advprog.palmerymanage.event.HarvestApprovedEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.HarvestEventPublisher;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
 import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
-import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,7 +32,10 @@ class HarvestServiceTest {
     private HarvestResultRepository harvestResultRepository;
     
     @Mock
-    private PlantationRepository plantationRepository;
+    private PlantationService plantationService;
+
+    @Mock
+    private PlantationValidationService plantationValidationService;
 
     @Mock
     private HarvestEventPublisher eventPublisher;
@@ -85,7 +88,7 @@ class HarvestServiceTest {
     void submitHarvest_success() {
         when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
                 .thenReturn(false);
-        when(plantationRepository.findById(plantationId)).thenReturn(Optional.of(pendingHarvest.getPlantation()));
+        when(plantationValidationService.validateAndCachePlantation(plantationId)).thenReturn(true);
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
 
         HarvestResult result = harvestService.submitHarvest(workerId, validRequest);
@@ -105,7 +108,7 @@ class HarvestServiceTest {
 
         when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
                 .thenReturn(false);
-        when(plantationRepository.findById(plantationId)).thenReturn(Optional.of(pendingHarvest.getPlantation()));
+        when(plantationValidationService.validateAndCachePlantation(plantationId)).thenReturn(true);
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
 
         HarvestResult result = harvestService.submitHarvest(workerId, validRequest);

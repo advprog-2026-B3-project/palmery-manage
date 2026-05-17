@@ -64,4 +64,8 @@ public class HarvestResult {
     @Builder.Default
     @OneToMany(mappedBy = "harvestResult", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<HarvestPhoto> photos = new ArrayList<>();
+
+    public UUID getPlantationId() {
+        return plantation != null ? plantation.getId() : null;
+    }
 }

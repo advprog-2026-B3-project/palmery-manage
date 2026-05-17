@@ -8,8 +8,9 @@ import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestPhoto;
 import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
-import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationRepository;
+import id.ac.ui.cs.advprog.palmerymanage.service.PlantationService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -26,7 +27,8 @@ import org.springframework.lang.NonNull;
 public class HarvestService {
 
     private final HarvestResultRepository harvestResultRepository;
-    private final PlantationRepository plantationRepository;
+    private final PlantationService plantationService;
+    private final PlantationValidationService plantationValidationService;
     private final HarvestEventPublisher eventPublisher;
     private final RestClient restClient;
 
@@ -38,17 +40,22 @@ public class HarvestService {
     private boolean useDummyAssignment;
 
     public HarvestService(HarvestResultRepository harvestResultRepository,
-                          PlantationRepository plantationRepository,
+                          PlantationService plantationService,
+                          PlantationValidationService plantationValidationService,
                           HarvestEventPublisher eventPublisher) {
         this.harvestResultRepository = harvestResultRepository;
-        this.plantationRepository = plantationRepository;
+        this.plantationService = plantationService;
+        this.plantationValidationService = plantationValidationService;
         this.eventPublisher = eventPublisher;
         this.restClient = RestClient.create();
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public HarvestResult submitHarvest(UUID workerId, HarvestRequestDto request) {
-        // validasi manual
+
+        // [OPTIMASI #2] Fail-Fast: Semua validasi input ringan dieksekusi LEBIH DULU
+        // sebelum menyentuh database sama sekali. Jika request tidak valid,
+        // kita tolak di sini tanpa overhead apapun.
         if (request.getPlantationId() == null) {
             throw new IllegalArgumentException("ID Kebun (plantationId) tidak boleh kosong");
         }
@@ -65,12 +72,19 @@ public class HarvestService {
             throw new IllegalArgumentException("Catatan (notes) tidak boleh kosong");
         }
 
+        // [OPTIMASI #3] Validasi kebun via Spring Cache (Caffeine, TTL 30 menit).
+        // Jika plantationId sudah pernah diverifikasi dan belum expire →
+        // langsung lewati HTTP call ke PlantationService (< 1ms dari memory).
+        // Jika cache expire atau belum ada → panggil PlantationService 1x, simpan ke cache.
+        plantationValidationService.validateAndCachePlantation(request.getPlantationId());
+
+        // DB Call: Cek duplikasi panen (tidak bisa di-cache karena data berubah setiap hari)
         if (harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, request.getHarvestDate())) {
             throw new IllegalArgumentException("Buruh sudah melaporkan Harvest pada tanggal ini.");
         }
 
-        Plantation plantation = plantationRepository.findById(request.getPlantationId())
-                .orElseThrow(() -> new IllegalArgumentException("Kebun tidak ditemukan"));
+        Plantation plantation = new Plantation();
+        plantation.setId(request.getPlantationId());
 
         HarvestResult result = HarvestResult.builder()
                 .workerId(workerId)
@@ -153,7 +167,6 @@ public class HarvestService {
         if ("APPROVED".equals(request.getStatus())) {
             harvest.setReadyForDelivery(true);
 
-            //Emit Spring Event HarvestApproved
             eventPublisher.publishHarvestApproved(new HarvestApprovedEvent(
                     harvest.getId(),
                     harvest.getWorkerId().toString(),
