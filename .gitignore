@@ -35,3 +35,7 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Local Developer Config ###
+src/main/resources/application-dev.properties
+.env
