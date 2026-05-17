@@ -20,6 +20,7 @@ public class HarvestPhoto {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @com.fasterxml.jackson.annotation.JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "harvest_result_id", nullable = false)
     private HarvestResult harvestResult;
