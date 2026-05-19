@@ -6,6 +6,7 @@ import id.ac.ui.cs.advprog.palmerymanage.event.HarvestApprovedEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.HarvestEventPublisher;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
+import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +29,9 @@ class HarvestServiceTest {
 
     @Mock
     private HarvestResultRepository harvestResultRepository;
+
+    @Mock
+    private PlantationRepository plantationRepository;
 
     @Mock
     private HarvestEventPublisher eventPublisher;
@@ -76,6 +80,7 @@ class HarvestServiceTest {
 
     @Test
     void submitHarvest_success() {
+        when(plantationRepository.existsById(plantationId)).thenReturn(true);
         when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
                 .thenReturn(false);
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
@@ -95,6 +100,7 @@ class HarvestServiceTest {
         photo.setSizeBytes(10000);
         validRequest.setPhotos(List.of(photo));
 
+        when(plantationRepository.existsById(plantationId)).thenReturn(true);
         when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
                 .thenReturn(false);
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
@@ -171,6 +177,7 @@ class HarvestServiceTest {
     // submitHarvest — guard 1x sehari
     @Test
     void submitHarvest_duplicateToday_throwsException() {
+        when(plantationRepository.existsById(plantationId)).thenReturn(true);
         when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
                 .thenReturn(true);
 
