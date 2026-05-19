@@ -1,9 +1,11 @@
 package id.ac.ui.cs.advprog.palmerymanage.event;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
 public class HarvestEventPublisher {
 
@@ -15,8 +17,7 @@ public class HarvestEventPublisher {
 
     public void publishHarvestApproved(@NonNull HarvestApprovedEvent event) {
         applicationEventPublisher.publishEvent(event);
-        System.out.println("[EVENT] HarvestApproved dikirim: harvestId=" + event.harvestId()
-                + ", workerId=" + event.workerId()
-                + ", kg=" + event.kgHarvested());
+        log.info("[EVENT] HarvestApproved published: harvestId={}, workerId={}, kg={}",
+                event.harvestId(), event.workerId(), event.kgHarvested());
     }
 }
