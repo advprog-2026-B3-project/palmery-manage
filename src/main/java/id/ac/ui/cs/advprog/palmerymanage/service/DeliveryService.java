@@ -9,6 +9,7 @@ import id.ac.ui.cs.advprog.palmerymanage.model.DeliveryStatus;
 import id.ac.ui.cs.advprog.palmerymanage.repository.DeliveryRepository;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @Transactional
 public class DeliveryService {
@@ -71,15 +73,22 @@ public class DeliveryService {
             throw new ForbiddenException("Panen tidak berada di bawah mandor ini");
         }
 
+        // Prevent double-delivery: mark harvests as no longer ready
+        for (HarvestResult panen : panenList) {
+            panen.setReadyForDelivery(false);
+        }
+        harvestResultRepository.saveAll(panenList);
+
         Delivery delivery = new Delivery();
         delivery.setSupirId(request.supirId());
         delivery.setMandorId(mandorId);
-        // Simpan plantationId dari panen pertama sebagai kebun_id untuk filtering sederhana
         delivery.setKebunId(panenList.getFirst().getPlantationId().toString());
         delivery.setTotalKg(total);
         delivery.setPanenIds(request.panenIds());
         delivery.setStatus(DeliveryStatus.MEMUAT);
 
+        log.info("Delivery created: supirId={}, mandorId={}, totalKg={}, panenCount={}",
+                request.supirId(), mandorId, total, panenList.size());
         return deliveryRepository.save(delivery);
     }
 
