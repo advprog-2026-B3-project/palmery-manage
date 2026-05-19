@@ -3,6 +3,7 @@ package id.ac.ui.cs.advprog.palmerymanage.dto;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -29,4 +30,8 @@ public class PlantationResponseDto {
     private Boolean isActive;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    // Assigned personnel
+    private List<UUID> assignedMandorIds;
+    private List<UUID> assignedSupirIds;
 }

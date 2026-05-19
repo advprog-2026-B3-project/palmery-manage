@@ -3,19 +3,25 @@ package id.ac.ui.cs.advprog.palmerymanage.service;
 import id.ac.ui.cs.advprog.palmerymanage.dto.*;
 import id.ac.ui.cs.advprog.palmerymanage.exception.*;
 import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
+import id.ac.ui.cs.advprog.palmerymanage.model.PlantationAssignment;
+import id.ac.ui.cs.advprog.palmerymanage.model.PlantationAssignment.PersonnelRole;
+import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationAssignmentRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PlantationServiceImpl implements PlantationService {
 
     private final PlantationRepository plantationRepository;
+    private final PlantationAssignmentRepository assignmentRepository;
     private final PlantationMapper plantationMapper;
     private final PlantationCoordinateValidator coordinateValidator;
 
@@ -32,7 +38,9 @@ public class PlantationServiceImpl implements PlantationService {
     @Transactional(readOnly = true)
     public PlantationResponseDto getPlantationById(UUID id) {
         Plantation plantation = findPlantationOrThrow(id);
-        return plantationMapper.toResponseDto(plantation);
+        PlantationResponseDto response = plantationMapper.toResponseDto(plantation);
+        enrichWithAssignments(response, id);
+        return response;
     }
 
     @Override
@@ -47,6 +55,7 @@ public class PlantationServiceImpl implements PlantationService {
 
         Plantation plantation = plantationMapper.toEntity(request);
         Plantation saved = plantationRepository.save(plantation);
+        log.info("Plantation created: id={}, code={}", saved.getId(), saved.getCode());
         return plantationMapper.toResponseDto(saved);
     }
 
@@ -63,7 +72,11 @@ public class PlantationServiceImpl implements PlantationService {
 
         plantationMapper.updateEntityFromDto(plantation, request);
         Plantation saved = plantationRepository.save(plantation);
-        return plantationMapper.toResponseDto(saved);
+        log.info("Plantation updated: id={}, code={}", saved.getId(), saved.getCode());
+
+        PlantationResponseDto response = plantationMapper.toResponseDto(saved);
+        enrichWithAssignments(response, id);
+        return response;
     }
 
     @Override
@@ -72,34 +85,71 @@ public class PlantationServiceImpl implements PlantationService {
         Plantation plantation = findPlantationOrThrow(id);
         ensureNoActivePersonnel(plantation);
         plantationRepository.delete(plantation);
+        log.info("Plantation deleted: id={}", id);
     }
 
     @Override
     @Transactional
     public void assignMandor(UUID plantationId, UUID mandorId) {
-        // Guard: ensure plantation exists before delegating to assignment logic
         findPlantationOrThrow(plantationId);
-        // NOTE: Actual assignment record is managed by the PlantationPersonnel relational service.
-        // This method validates existence and can be extended to emit events or enforce business rules.
+
+        if (assignmentRepository.existsByPlantationIdAndPersonnelIdAndRole(
+                plantationId, mandorId, PersonnelRole.MANDOR)) {
+            throw new BadRequestException("Mandor sudah ditugaskan ke kebun ini");
+        }
+
+        PlantationAssignment assignment = PlantationAssignment.builder()
+                .plantationId(plantationId)
+                .personnelId(mandorId)
+                .role(PersonnelRole.MANDOR)
+                .build();
+        assignmentRepository.save(assignment);
+        log.info("Mandor {} assigned to plantation {}", mandorId, plantationId);
     }
 
     @Override
     @Transactional
     public void unassignMandor(UUID plantationId, UUID mandorId) {
         findPlantationOrThrow(plantationId);
-        // Delegates to assignment service; mandor cannot be re-assigned to another plantation while active
+
+        PlantationAssignment assignment = assignmentRepository
+                .findByPlantationIdAndPersonnelIdAndRole(plantationId, mandorId, PersonnelRole.MANDOR)
+                .orElseThrow(() -> new BadRequestException("Mandor tidak ditemukan di kebun ini"));
+
+        assignmentRepository.delete(assignment);
+        log.info("Mandor {} unassigned from plantation {}", mandorId, plantationId);
     }
 
     @Override
     @Transactional
     public void assignSupir(UUID plantationId, UUID supirId) {
         findPlantationOrThrow(plantationId);
+
+        if (assignmentRepository.existsByPlantationIdAndPersonnelIdAndRole(
+                plantationId, supirId, PersonnelRole.SUPIR)) {
+            throw new BadRequestException("Supir sudah ditugaskan ke kebun ini");
+        }
+
+        PlantationAssignment assignment = PlantationAssignment.builder()
+                .plantationId(plantationId)
+                .personnelId(supirId)
+                .role(PersonnelRole.SUPIR)
+                .build();
+        assignmentRepository.save(assignment);
+        log.info("Supir {} assigned to plantation {}", supirId, plantationId);
     }
 
     @Override
     @Transactional
     public void unassignSupir(UUID plantationId, UUID supirId) {
         findPlantationOrThrow(plantationId);
+
+        PlantationAssignment assignment = assignmentRepository
+                .findByPlantationIdAndPersonnelIdAndRole(plantationId, supirId, PersonnelRole.SUPIR)
+                .orElseThrow(() -> new BadRequestException("Supir tidak ditemukan di kebun ini"));
+
+        assignmentRepository.delete(assignment);
+        log.info("Supir {} unassigned from plantation {}", supirId, plantationId);
     }
 
     // --- Private helpers ---
@@ -120,13 +170,27 @@ public class PlantationServiceImpl implements PlantationService {
     }
 
     private void ensureNoActivePersonnel(Plantation plantation) {
-        // Guard: hapus gagal jika masih ada Mandor terikat.
-        // The actual check queries the PlantationPersonnel association table.
-        // When the personnel module's repository is available, inject and query it here.
-        // Placeholder: always passes until personnel module is integrated.
-        boolean hasActiveMandor = false; // replace with: personnelRepository.existsByPlantationIdAndRole(plantation.getId(), Role.MANDOR)
+        boolean hasActiveMandor = assignmentRepository.existsByPlantationIdAndRole(
+                plantation.getId(), PersonnelRole.MANDOR);
         if (hasActiveMandor) {
             throw new PlantationHasActivePersonnelException(plantation.getId());
         }
+    }
+
+    private void enrichWithAssignments(PlantationResponseDto response, UUID plantationId) {
+        List<PlantationAssignment> assignments = assignmentRepository.findByPlantationId(plantationId);
+
+        List<UUID> mandorIds = assignments.stream()
+                .filter(a -> a.getRole() == PersonnelRole.MANDOR)
+                .map(PlantationAssignment::getPersonnelId)
+                .toList();
+
+        List<UUID> supirIds = assignments.stream()
+                .filter(a -> a.getRole() == PersonnelRole.SUPIR)
+                .map(PlantationAssignment::getPersonnelId)
+                .toList();
+
+        response.setAssignedMandorIds(mandorIds);
+        response.setAssignedSupirIds(supirIds);
     }
 }
