@@ -1,29 +1,33 @@
 package id.ac.ui.cs.advprog.palmerymanage.controller;
 
-import id.ac.ui.cs.advprog.palmerymanage.service.RustfsService;
+import id.ac.ui.cs.advprog.palmerymanage.service.PhotoUploadAsyncService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/harvests/photos")
 public class PhotoUploadController {
 
-    private final RustfsService rustfsService;
+    private final PhotoUploadAsyncService photoUploadAsyncService;
+    private final String publicUrl;
+    private final String bucket;
 
-    public PhotoUploadController(RustfsService rustfsService) {
-        this.rustfsService = rustfsService;
+    public PhotoUploadController(
+            PhotoUploadAsyncService photoUploadAsyncService,
+            @Value("${rustfs.public-url}") String publicUrl,
+            @Value("${rustfs.bucket}") String bucket) {
+        this.photoUploadAsyncService = photoUploadAsyncService;
+        this.publicUrl = publicUrl;
+        this.bucket = bucket;
     }
 
-    /**
-     * Upload foto ke Rustfs.
-     * Return URL yang kemudian dipakai di field photos[] saat POST /api/harvests.
-     *
-     * Hanya BURUH yang boleh upload foto.
-     */
     @PostMapping
     public ResponseEntity<?> uploadPhoto(
             @RequestHeader("X-User-Role") String role,
@@ -43,17 +47,29 @@ public class PhotoUploadController {
         }
 
         try {
-            String url = rustfsService.uploadFile(file);
+            // Baca byte[] di main thread sebelum stream ditutup oleh Tomcat
+            byte[] fileData = file.getBytes();
+            String originalFilename = file.getOriginalFilename() != null
+                    ? file.getOriginalFilename()
+                    : "file";
+            String filename = UUID.randomUUID() + "_" + originalFilename;
 
+            // Generate URL secara instan
+            String url = publicUrl + "/" + bucket + "/" + filename;
+
+            // Kirim upload ke background thread (non-blocking)
+            photoUploadAsyncService.uploadFileAsync(fileData, filename, contentType);
+
+            // Response langsung dikembalikan tanpa menunggu upload selesai
             Map<String, Object> response = new HashMap<>();
             response.put("url", url);
-            response.put("filename", file.getOriginalFilename());
+            response.put("filename", originalFilename);
             response.put("sizeBytes", file.getSize());
 
             return ResponseEntity.ok(response);
 
-        } catch (RuntimeException e) {
-            return ResponseEntity.internalServerError().body("Upload gagal: " + e.getMessage());
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().body("Gagal membaca file: " + e.getMessage());
         }
     }
 }
