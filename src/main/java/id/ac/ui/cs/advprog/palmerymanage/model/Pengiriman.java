@@ -24,11 +24,11 @@ import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "deliveries")
+@Table(name = "pengiriman")
 @Getter
 @Setter
 @NoArgsConstructor
-public class Delivery {
+public class Pengiriman {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -40,19 +40,18 @@ public class Delivery {
     @Column(name = "mandor_id", nullable = false)
     private String mandorId;
 
-    // Untuk saat ini kebun_id diisi dengan plantationId (UUID string) dari panen pertama / mandor.
     @Column(name = "kebun_id", nullable = false)
     private String kebunId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 40)
-    private DeliveryStatus status = DeliveryStatus.MEMUAT;
+    private PengirimanStatus status = PengirimanStatus.MEMUAT;
 
     @Column(name = "total_kg", nullable = false)
     private int totalKg;
 
     @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "delivery_panen_ids", joinColumns = @JoinColumn(name = "delivery_id"))
+    @CollectionTable(name = "pengiriman_panen_ids", joinColumns = @JoinColumn(name = "pengiriman_id"))
     @Column(name = "panen_id", nullable = false)
     private List<String> panenIds = new ArrayList<>();
 
@@ -70,4 +69,3 @@ public class Delivery {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 }
-
