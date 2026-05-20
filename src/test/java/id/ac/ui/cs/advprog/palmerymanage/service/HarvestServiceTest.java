@@ -38,6 +38,9 @@ class HarvestServiceTest {
     private PlantationValidationService plantationValidationService;
 
     @Mock
+    private PlantationRepository plantationRepository;
+
+    @Mock
     private HarvestEventPublisher eventPublisher;
 
     @InjectMocks
@@ -86,6 +89,7 @@ class HarvestServiceTest {
 
     @Test
     void submitHarvest_success() {
+        when(plantationRepository.existsById(plantationId)).thenReturn(true);
         when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
                 .thenReturn(false);
         when(plantationValidationService.validateAndCachePlantation(plantationId)).thenReturn(true);
@@ -106,6 +110,7 @@ class HarvestServiceTest {
         photo.setSizeBytes(10000);
         validRequest.setPhotos(List.of(photo));
 
+        when(plantationRepository.existsById(plantationId)).thenReturn(true);
         when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
                 .thenReturn(false);
         when(plantationValidationService.validateAndCachePlantation(plantationId)).thenReturn(true);
@@ -183,6 +188,7 @@ class HarvestServiceTest {
     // submitHarvest — guard 1x sehari
     @Test
     void submitHarvest_duplicateToday_throwsException() {
+        when(plantationRepository.existsById(plantationId)).thenReturn(true);
         when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
                 .thenReturn(true);
 

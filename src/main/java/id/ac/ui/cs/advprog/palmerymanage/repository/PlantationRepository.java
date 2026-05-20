@@ -21,8 +21,8 @@ public interface PlantationRepository extends JpaRepository<Plantation, UUID> {
 
     @Query("""
             SELECT p FROM Plantation p
-            WHERE (:name IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :name, '%')))
-            AND (:code IS NULL OR LOWER(p.code) LIKE LOWER(CONCAT('%', :code, '%')))
+            WHERE (COALESCE(:name, '') = '' OR LOWER(p.name) LIKE LOWER(CONCAT('%', :name, '%')))
+            AND (COALESCE(:code, '') = '' OR LOWER(p.code) LIKE LOWER(CONCAT('%', :code, '%')))
             """)
     List<Plantation> findAllByFilter(
             @Param("name") String name,

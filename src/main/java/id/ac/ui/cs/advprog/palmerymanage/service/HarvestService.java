@@ -12,8 +12,10 @@ import id.ac.ui.cs.advprog.palmerymanage.service.PlantationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -25,6 +27,7 @@ import org.springframework.lang.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Slf4j
 @Service
 public class HarvestService {
 
@@ -39,8 +42,7 @@ public class HarvestService {
     // URL ke Assignment API (wajib dikonfigurasi via environment variable di production)
     @Value("${assignment.api.url:}")
     private String assignmentApiUrl;
-    
-    // Toggle on/off untuk dummy. Secara default berjalan dalam mode dummy (true)
+
     @Value("${assignment.api.dummy:true}")
     private boolean useDummyAssignment;
 
@@ -57,10 +59,7 @@ public class HarvestService {
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public HarvestResult submitHarvest(UUID workerId, HarvestRequestDto request) {
-
-        // [OPTIMASI #2] Fail-Fast: Semua validasi input ringan dieksekusi LEBIH DULU
-        // sebelum menyentuh database sama sekali. Jika request tidak valid,
-        // kita tolak di sini tanpa overhead apapun.
+        // Validasi input
         if (request.getPlantationId() == null) {
             throw new IllegalArgumentException("ID Kebun (plantationId) tidak boleh kosong");
         }
@@ -84,6 +83,12 @@ public class HarvestService {
         plantationValidationService.validateAndCachePlantation(request.getPlantationId());
 
         // DB Call: Cek duplikasi panen (tidak bisa di-cache karena data berubah setiap hari)
+        // Validasi plantation exists
+        if (!plantationRepository.existsById(request.getPlantationId())) {
+            throw new IllegalArgumentException("Kebun dengan ID " + request.getPlantationId() + " tidak ditemukan");
+        }
+
+        // Guard: 1x sehari per buruh
         if (harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, request.getHarvestDate())) {
             throw new IllegalArgumentException("Buruh sudah melaporkan Harvest pada tanggal ini.");
         }
@@ -102,7 +107,7 @@ public class HarvestService {
                 .status("PENDING")
                 .build();
 
-        // menyambungkan data foto dari Rustfs
+        // Menyambungkan data foto dari Rustfs
         if (request.getPhotos() != null && !request.getPhotos().isEmpty()) {
             var photos = request.getPhotos().stream().map(p -> HarvestPhoto.builder()
                     .harvestResult(result)
@@ -113,11 +118,12 @@ public class HarvestService {
             result.setPhotos(photos);
         }
 
-        return harvestResultRepository.save(result);
+        HarvestResult saved = harvestResultRepository.save(result);
+        log.info("Harvest submitted: id={}, workerId={}, plantationId={}", saved.getId(), workerId, request.getPlantationId());
+        return saved;
     }
 
     private boolean checkIsAnakBuah(UUID mandorId, UUID workerId) {
-        // mode dummy aktif langsung return true
         if (useDummyAssignment) {
             logger.info("[MOCKING/DUMMY] Mengecek apakah Buruh {} adalah bawahan Mandor {}", workerId, mandorId);
             return true;
@@ -130,7 +136,7 @@ public class HarvestService {
                     .uri(assignmentApiUrl + "/check?mandorId={mandorId}&workerId={workerId}", mandorId, workerId)
                     .retrieve()
                     .body(Boolean.class);
-                    
+
             return Boolean.TRUE.equals(isAnakBuah);
         } catch (IllegalArgumentException | IllegalStateException | org.springframework.web.client.RestClientException e) {
             logger.error("[ERROR] Gagal memanggil API Assignment: {}", e.getMessage());
@@ -148,12 +154,12 @@ public class HarvestService {
         HarvestResult harvest = harvestResultRepository.findById(harvestId)
                 .orElseThrow(() -> new IllegalArgumentException("Laporan Harvest tidak ditemukan"));
 
-        //data Immutability
+        // Data Immutability
         if (!"PENDING".equals(harvest.getStatus())) {
             throw new IllegalStateException("Laporan ini sudah divalidasi dan tidak dapat diubah lagi.");
         }
 
-        // tambahan guard mandor
+        // Guard: mandor hanya bisa validasi anak buahnya
         if (!checkIsAnakBuah(mandorId, harvest.getWorkerId())) {
             throw new IllegalStateException("Akses Ditolak: Buruh ini bukan di bawah pengawasan Anda!");
         }
@@ -179,6 +185,7 @@ public class HarvestService {
             ));
         }
 
+        log.info("Harvest validated: id={}, status={}", harvestId, request.getStatus());
         return harvestResultRepository.save(harvest);
     }
 
@@ -187,7 +194,6 @@ public class HarvestService {
                 .orElseThrow(() -> new IllegalArgumentException("Laporan Harvest tidak ditemukan"));
     }
 
-    //Get riwayat Harvest berdasarkan workerId
     public List<HarvestResult> getHarvestsByWorkerId(UUID workerId) {
         if (workerId == null) {
             throw new IllegalArgumentException("Worker ID tidak boleh kosong");
@@ -199,7 +205,6 @@ public class HarvestService {
         return harvestResultRepository.findAll();
     }
 
-    // service untuk Riwayat panen Buruh
     public List<HarvestResult> getBuruhHistory(UUID workerId, LocalDate startDate, LocalDate endDate, String status) {
         if (workerId == null) {
             throw new IllegalArgumentException("Worker ID tidak boleh kosong");
@@ -207,7 +212,6 @@ public class HarvestService {
         return harvestResultRepository.findBuruhHistory(workerId, startDate, endDate, status);
     }
 
-    // Service untuk Riwayat Mandor (Semua Buruh)
     public List<HarvestResult> getMandorHistory(LocalDate date, UUID filterWorkerId) {
         return harvestResultRepository.findMandorHistory(date, filterWorkerId);
     }
