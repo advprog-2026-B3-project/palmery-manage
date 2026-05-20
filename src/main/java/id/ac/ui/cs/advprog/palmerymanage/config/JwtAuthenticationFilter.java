@@ -79,13 +79,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
+        String normalizedRole = normalizeManageRole(role);
         List<SimpleGrantedAuthority> authorities = List.of(
-                new SimpleGrantedAuthority("ROLE_" + role.toUpperCase())
+                new SimpleGrantedAuthority("ROLE_" + normalizedRole)
         );
 
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(subject, null, authorities);
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    private String normalizeManageRole(String role) {
+        if (role == null) {
+            return "BURUH";
+        }
+        return switch (role.toUpperCase()) {
+            case "DRIVER" -> "SUPIR";
+            case "SUPERVISOR" -> "MANDOR";
+            case "WORKER" -> "BURUH";
+            default -> role.toUpperCase();
+        };
     }
 }

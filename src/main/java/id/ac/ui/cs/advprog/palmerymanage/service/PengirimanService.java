@@ -52,15 +52,18 @@ public class PengirimanService {
     private final HarvestResultRepository harvestResultRepository;
     private final PlantationAssignmentRepository plantationAssignmentRepository;
     private final PengirimanEventPublisher eventPublisher;
+    private final AuthUserClient authUserClient;
 
     public PengirimanService(PengirimanRepository pengirimanRepository,
                              HarvestResultRepository harvestResultRepository,
                              PlantationAssignmentRepository plantationAssignmentRepository,
-                             PengirimanEventPublisher eventPublisher) {
+                             PengirimanEventPublisher eventPublisher,
+                             AuthUserClient authUserClient) {
         this.pengirimanRepository = pengirimanRepository;
         this.harvestResultRepository = harvestResultRepository;
         this.plantationAssignmentRepository = plantationAssignmentRepository;
         this.eventPublisher = eventPublisher;
+        this.authUserClient = authUserClient;
     }
 
     public List<Map<String, Object>> listSupirOnKebunMandor(String mandorId, String search) {
@@ -70,21 +73,33 @@ public class PengirimanService {
         List<PlantationAssignment> supirAssignments =
                 plantationAssignmentRepository.findByPlantationIdAndRole(kebunId, PersonnelRole.SUPIR);
 
+        List<UUID> supirIds = supirAssignments.stream()
+                .map(PlantationAssignment::getPersonnelId)
+                .toList();
+        Map<UUID, AuthUserClient.UserSummary> profiles = authUserClient.fetchUsersByIds(supirIds);
+
         String searchLower = search == null ? "" : search.trim().toLowerCase();
         List<Map<String, Object>> result = new ArrayList<>();
         for (PlantationAssignment assignment : supirAssignments) {
-            String supirId = assignment.getPersonnelId().toString();
-            String displayName = "Supir " + supirId.substring(0, Math.min(8, supirId.length()));
+            UUID personnelId = assignment.getPersonnelId();
+            String supirId = personnelId.toString();
+            AuthUserClient.UserSummary profile = profiles.get(personnelId);
+            String displayName = profile != null
+                    ? profile.nama()
+                    : "Supir " + supirId.substring(0, Math.min(8, supirId.length()));
+            String kontak = profile != null ? profile.email() : "";
+
             if (!searchLower.isEmpty()
                     && !displayName.toLowerCase().contains(searchLower)
-                    && !supirId.toLowerCase().contains(searchLower)) {
+                    && !supirId.toLowerCase().contains(searchLower)
+                    && !kontak.toLowerCase().contains(searchLower)) {
                 continue;
             }
             result.add(Map.of(
                     "id", supirId,
                     "nama", displayName,
                     "kebun_id", kebunId.toString(),
-                    "kontak", ""
+                    "kontak", kontak
             ));
         }
         return result;
