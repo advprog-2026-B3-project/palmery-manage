@@ -40,7 +40,7 @@ public class HarvestController {
                 .rejectionReason(result.getRejectionReason())
                 .validatedAt(result.getValidatedAt())
                 .createdAt(result.getCreatedAt())
-                .photos(result.getPhotos().stream().map(photo -> 
+                .photos(result.getPhotos() == null ? new java.util.ArrayList<>() : result.getPhotos().stream().map(photo -> 
                         HarvestResponseDto.PhotoDto.builder()
                                 .id(photo.getId())
                                 .url(photo.getUrl())

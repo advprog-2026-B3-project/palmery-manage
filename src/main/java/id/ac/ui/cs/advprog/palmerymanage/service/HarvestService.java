@@ -22,9 +22,13 @@ import java.time.LocalDate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.client.RestClient;
 import org.springframework.lang.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class HarvestService {
+
+    private static final Logger logger = LoggerFactory.getLogger(HarvestService.class);
 
     private final HarvestResultRepository harvestResultRepository;
     private final PlantationService plantationService;
@@ -32,7 +36,8 @@ public class HarvestService {
     private final HarvestEventPublisher eventPublisher;
     private final RestClient restClient;
 
-    @Value("${assignment.api.url:http://localhost:8080/api/assignment}")
+    // URL ke Assignment API (wajib dikonfigurasi via environment variable di production)
+    @Value("${assignment.api.url:}")
     private String assignmentApiUrl;
     
     // Toggle on/off untuk dummy. Secara default berjalan dalam mode dummy (true)
@@ -114,25 +119,22 @@ public class HarvestService {
     private boolean checkIsAnakBuah(UUID mandorId, UUID workerId) {
         // mode dummy aktif langsung return true
         if (useDummyAssignment) {
-            System.out.println("[MOCKING/DUMMY] Mengecek apakah Buruh " + workerId + " adalah bawahan Mandor " + mandorId);
+            logger.info("[MOCKING/DUMMY] Mengecek apakah Buruh {} adalah bawahan Mandor {}", workerId, mandorId);
             return true;
         }
 
         try {
-            String url = assignmentApiUrl + "/check?mandorId=" + mandorId + "&workerId=" + workerId;
-            
-            System.out.println("[API CALL] Mengecek asignment ke: " + url);
+            logger.info("[API CALL] Mengecek asignment ke: {}", assignmentApiUrl);
             
             Boolean isAnakBuah = restClient.get()
-                    .uri(url)
+                    .uri(assignmentApiUrl + "/check?mandorId={mandorId}&workerId={workerId}", mandorId, workerId)
                     .retrieve()
                     .body(Boolean.class);
                     
             return Boolean.TRUE.equals(isAnakBuah);
-        } catch (Exception e) {
-            System.err.println("[ERROR] Gagal memanggil API Assignment: " + e.getMessage());
-            // Default ke false 
-            return false; 
+        } catch (IllegalArgumentException | IllegalStateException | org.springframework.web.client.RestClientException e) {
+            logger.error("[ERROR] Gagal memanggil API Assignment: {}", e.getMessage());
+            return false;
         }
     }
 
