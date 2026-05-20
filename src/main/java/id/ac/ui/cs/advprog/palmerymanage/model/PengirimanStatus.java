@@ -1,7 +1,6 @@
 package id.ac.ui.cs.advprog.palmerymanage.model;
 
-public enum DeliveryStatus {
-    CREATED,
+public enum PengirimanStatus {
     MEMUAT,
     MENGIRIM,
     TIBA_DI_TUJUAN,
@@ -13,4 +12,3 @@ public enum DeliveryStatus {
     REJECTED_ADMIN,
     PARTIAL_REJECTED_ADMIN
 }
-
