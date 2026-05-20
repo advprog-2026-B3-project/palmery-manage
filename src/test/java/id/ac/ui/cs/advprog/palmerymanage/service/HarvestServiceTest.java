@@ -38,12 +38,11 @@ class HarvestServiceTest {
     private PlantationValidationService plantationValidationService;
 
     @Mock
-    private PlantationRepository plantationRepository;
-
-    @Mock
     private HarvestEventPublisher eventPublisher;
 
-    @InjectMocks
+    @Mock
+    private id.ac.ui.cs.advprog.palmerymanage.service.validation.HarvestValidator validator;
+
     private HarvestService harvestService;
 
     private UUID workerId;
@@ -55,6 +54,7 @@ class HarvestServiceTest {
 
     @BeforeEach
     void setUp() {
+        harvestService = new HarvestService(harvestResultRepository, plantationService, plantationValidationService, eventPublisher, List.of(validator));
         org.springframework.test.util.ReflectionTestUtils.setField(harvestService, "useDummyAssignment", true);
         workerId = UUID.randomUUID();
         mandorId = UUID.randomUUID();
@@ -83,16 +83,10 @@ class HarvestServiceTest {
                 .build();
     }
 
-    // =============================================
-    // submitHarvest — validasi input
-    // =============================================
 
     @Test
     void submitHarvest_success() {
-        when(plantationRepository.existsById(plantationId)).thenReturn(true);
-        when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
-                .thenReturn(false);
-        when(plantationValidationService.validateAndCachePlantation(plantationId)).thenReturn(true);
+
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
 
         HarvestResult result = harvestService.submitHarvest(workerId, validRequest);
@@ -110,10 +104,7 @@ class HarvestServiceTest {
         photo.setSizeBytes(10000);
         validRequest.setPhotos(List.of(photo));
 
-        when(plantationRepository.existsById(plantationId)).thenReturn(true);
-        when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
-                .thenReturn(false);
-        when(plantationValidationService.validateAndCachePlantation(plantationId)).thenReturn(true);
+
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
 
         HarvestResult result = harvestService.submitHarvest(workerId, validRequest);
@@ -122,82 +113,8 @@ class HarvestServiceTest {
         verify(harvestResultRepository).save(any());
     }
 
-    @Test
-    void submitHarvest_nullPlantationId_throwsException() {
-        validRequest.setPlantationId(null);
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> harvestService.submitHarvest(workerId, validRequest));
-        assertEquals("ID Kebun (plantationId) tidak boleh kosong", ex.getMessage());
-    }
 
-    @Test
-    void submitHarvest_nullMandorId_throwsException() {
-        validRequest.setMandorId(null);
-
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> harvestService.submitHarvest(workerId, validRequest));
-        assertEquals("ID Mandor (mandorId) tidak boleh kosong", ex.getMessage());
-    }
-
-    @Test
-    void submitHarvest_nullHarvestDate_throwsException() {
-        validRequest.setHarvestDate(null);
-
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> harvestService.submitHarvest(workerId, validRequest));
-        assertEquals("Tanggal Harvest (harvestDate) tidak boleh kosong", ex.getMessage());
-    }
-
-    @Test
-    void submitHarvest_nullKgHarvested_throwsException() {
-        validRequest.setKgHarvested(null);
-
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> harvestService.submitHarvest(workerId, validRequest));
-        assertEquals("Berat Harvest harus diisi dan minimal 1 kg", ex.getMessage());
-    }
-
-    @Test
-    void submitHarvest_zeroKgHarvested_throwsException() {
-        validRequest.setKgHarvested(0f);
-
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> harvestService.submitHarvest(workerId, validRequest));
-        assertEquals("Berat Harvest harus diisi dan minimal 1 kg", ex.getMessage());
-    }
-
-    @Test
-    void submitHarvest_emptyNotes_throwsException() {
-        validRequest.setNotes("   ");
-
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> harvestService.submitHarvest(workerId, validRequest));
-        assertEquals("Catatan (notes) tidak boleh kosong", ex.getMessage());
-    }
-
-    @Test
-    void submitHarvest_nullNotes_throwsException() {
-        validRequest.setNotes(null);
-
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> harvestService.submitHarvest(workerId, validRequest));
-        assertEquals("Catatan (notes) tidak boleh kosong", ex.getMessage());
-    }
-
-    // submitHarvest — guard 1x sehari
-    @Test
-    void submitHarvest_duplicateToday_throwsException() {
-        when(plantationRepository.existsById(plantationId)).thenReturn(true);
-        when(harvestResultRepository.existsByWorkerIdAndHarvestDate(workerId, validRequest.getHarvestDate()))
-                .thenReturn(true);
-
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> harvestService.submitHarvest(workerId, validRequest));
-        assertEquals("Buruh sudah melaporkan Harvest pada tanggal ini.", ex.getMessage());
-    }
-
-    // validateHarvest — APPROVED
     @Test
     void validateHarvest_approve_success() {
         ValidationRequestDto request = new ValidationRequestDto();
@@ -234,7 +151,6 @@ class HarvestServiceTest {
         assertEquals(100f, event.kgHarvested());
     }
 
-    // validateHarvest — REJECTED
     @Test
     void validateHarvest_reject_success() {
         ValidationRequestDto request = new ValidationRequestDto();
@@ -276,7 +192,6 @@ class HarvestServiceTest {
         assertEquals("Alasan penolakan wajib diisi jika menolak laporan.", ex.getMessage());
     }
 
-    // validateHarvest — immutability
     @Test
     void validateHarvest_alreadyApproved_throwsException() {
         pendingHarvest.setStatus("APPROVED");
@@ -336,9 +251,6 @@ class HarvestServiceTest {
         assertEquals("Laporan Harvest tidak ditemukan", ex.getMessage());
     }
 
-    // =============================================
-    // getHarvestById
-    // =============================================
 
     @Test
     void getHarvestById_found() {
@@ -359,9 +271,6 @@ class HarvestServiceTest {
         assertEquals("Laporan Harvest tidak ditemukan", ex.getMessage());
     }
 
-    // =============================================
-    // getHarvestsByWorkerId
-    // =============================================
 
     @Test
     void getHarvestsByWorkerId_success() {
@@ -379,9 +288,6 @@ class HarvestServiceTest {
         assertEquals("Worker ID tidak boleh kosong", ex.getMessage());
     }
 
-    // =============================================
-    // getAllHarvests
-    // =============================================
 
     @Test
     void getAllHarvests_success() {
@@ -392,9 +298,6 @@ class HarvestServiceTest {
         assertEquals(1, results.size());
     }
 
-    // =============================================
-    // getBuruhHistory
-    // =============================================
 
     @Test
     void getBuruhHistory_success() {
@@ -427,7 +330,7 @@ class HarvestServiceTest {
     }
 
 
-    // getMandorHistory
+
     @Test
     void getMandorHistory_success() {
         when(harvestResultRepository.findMandorHistory(null, null))
@@ -448,5 +351,22 @@ class HarvestServiceTest {
         List<HarvestResult> results = harvestService.getMandorHistory(date, workerId);
 
         assertEquals(1, results.size());
+    }
+
+    @Test
+    void validateHarvest_notAnakBuah_apiThrowsException() {
+        org.springframework.test.util.ReflectionTestUtils.setField(harvestService, "useDummyAssignment", false);
+        org.springframework.test.util.ReflectionTestUtils.setField(harvestService, "assignmentApiUrl", "http://localhost:8080/api/assignment");
+        
+        ValidationRequestDto request = new ValidationRequestDto();
+        request.setStatus("APPROVED");
+
+        when(harvestResultRepository.findById(harvestId)).thenReturn(Optional.of(pendingHarvest));
+
+        // Trigger RestClientException to simulate API failure and trigger IllegalStateException
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> harvestService.validateHarvest(mandorId, harvestId, request));
+        assertEquals("Akses Ditolak: Buruh ini bukan di bawah pengawasan Anda!", ex.getMessage());
     }
 }
