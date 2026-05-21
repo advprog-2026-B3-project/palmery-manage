@@ -24,6 +24,8 @@ services:
     depends_on:
       manage-postgres:
         condition: service_healthy
+      palmery-redis:
+        condition: service_healthy
     environment:
       SERVER_PORT: ${SERVER_PORT:-8081}
       POSTGRES_URL: jdbc:postgresql://manage-postgres:5432/managedb
@@ -36,6 +38,8 @@ services:
       RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-minioadmin}
       RUSTFS_BUCKET: harvest-photos
       RUSTFS_PUBLIC_URL: http://rustfs:9000
+      REDIS_HOST: palmery-redis
+      REDIS_PORT: 6379
     ports:
       - "8081:8081"
   rustfs:
@@ -56,6 +60,20 @@ services:
       timeout: 10s
       retries: 3
 
+  palmery-redis:
+    image: redis:7-alpine
+    container_name: palmery-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   manage-postgres-data:
   rustfs_data:
+  redis_data:

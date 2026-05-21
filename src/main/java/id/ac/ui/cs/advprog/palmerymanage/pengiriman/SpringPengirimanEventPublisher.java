@@ -1,4 +1,4 @@
-package id.ac.ui.cs.advprog.palmerymanage.service;
+package id.ac.ui.cs.advprog.palmerymanage.pengiriman;
 
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedAdminEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedMandorEvent;
@@ -10,14 +10,15 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 
 @Component
-public class PengirimanEventPublisher {
+public class SpringPengirimanEventPublisher implements PengirimanEventPublisher {
 
     private final ApplicationEventPublisher publisher;
 
-    public PengirimanEventPublisher(ApplicationEventPublisher publisher) {
+    public SpringPengirimanEventPublisher(ApplicationEventPublisher publisher) {
         this.publisher = publisher;
     }
 
+    @Override
     public void publishPengirimanTiba(Pengiriman pengiriman) {
         publisher.publishEvent(new PengirimanTibaEvent(
                 pengiriman.getId(),
@@ -29,6 +30,7 @@ public class PengirimanEventPublisher {
         ));
     }
 
+    @Override
     public void publishPengirimanApprovedMandor(Pengiriman pengiriman) {
         publisher.publishEvent(new PengirimanApprovedMandorEvent(
                 pengiriman.getId(),
@@ -40,6 +42,7 @@ public class PengirimanEventPublisher {
         ));
     }
 
+    @Override
     public void publishPengirimanApprovedAdmin(Pengiriman pengiriman, int recognizedKg) {
         publisher.publishEvent(new PengirimanApprovedAdminEvent(
                 pengiriman.getId(),

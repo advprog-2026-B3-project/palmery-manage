@@ -37,4 +37,6 @@ public interface HarvestResultRepository extends JpaRepository<HarvestResult, UU
     );
 
     List<HarvestResult> findByReadyForDeliveryIsTrue();
+
+    List<HarvestResult> findByPlantation_Id(UUID plantationId);
 }

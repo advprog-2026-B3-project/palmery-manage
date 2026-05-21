@@ -172,7 +172,9 @@ public class PlantationServiceImpl implements PlantationService {
     private void ensureNoActivePersonnel(Plantation plantation) {
         boolean hasActiveMandor = assignmentRepository.existsByPlantationIdAndRole(
                 plantation.getId(), PersonnelRole.MANDOR);
-        if (hasActiveMandor) {
+        boolean hasActiveSupir = assignmentRepository.existsByPlantationIdAndRole(
+                plantation.getId(), PersonnelRole.SUPIR);
+        if (hasActiveMandor || hasActiveSupir) {
             throw new PlantationHasActivePersonnelException(plantation.getId());
         }
     }

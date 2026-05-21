@@ -4,10 +4,13 @@ import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedAdminEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedMandorEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanTibaEvent;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanEventPublisher;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.SpringPengirimanEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
@@ -15,9 +18,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.verify;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class PengirimanEventPublisherTest {
@@ -31,7 +33,7 @@ class PengirimanEventPublisherTest {
 
     @BeforeEach
     void setUp() {
-        pengirimanEventPublisher = new PengirimanEventPublisher(publisher);
+        pengirimanEventPublisher = new SpringPengirimanEventPublisher(publisher);
 
         pengiriman = new Pengiriman();
         pengiriman.setId(UUID.randomUUID());

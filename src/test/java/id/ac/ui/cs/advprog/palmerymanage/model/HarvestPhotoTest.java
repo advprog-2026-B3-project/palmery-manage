@@ -10,11 +10,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class HarvestPhotoTest {
 
     private HarvestResult buildHarvestResult() {
+        Plantation plantation = Plantation.builder().id(UUID.randomUUID()).build();
         return HarvestResult.builder()
                 .id(UUID.randomUUID())
                 .workerId(UUID.randomUUID())
                 .mandorId(UUID.randomUUID())
-                .plantationId(UUID.randomUUID())
+                .plantation(plantation)
                 .harvestDate(LocalDate.now())
                 .kgHarvested(100f)
                 .notes("notes")
