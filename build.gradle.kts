@@ -72,6 +72,11 @@ tasks.jacocoTestReport {
 }
 
 tasks.jacocoTestCoverageVerification {
+    onlyIf {
+        gradle.startParameter.taskRequests.none { request ->
+            request.args.contains("--tests")
+        }
+    }
     violationRules {
         rule {
             limit {
