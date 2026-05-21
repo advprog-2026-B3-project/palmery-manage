@@ -7,12 +7,16 @@ import id.ac.ui.cs.advprog.palmerymanage.exception.OverWeightException;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
 import id.ac.ui.cs.advprog.palmerymanage.model.PengirimanStatus;
+import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.model.PlantationAssignment;
 import id.ac.ui.cs.advprog.palmerymanage.model.PlantationAssignment.PersonnelRole;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.PengirimanRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationAssignmentRepository;
+import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,19 +55,25 @@ public class PengirimanService {
     private final PengirimanRepository pengirimanRepository;
     private final HarvestResultRepository harvestResultRepository;
     private final PlantationAssignmentRepository plantationAssignmentRepository;
+    private final PlantationRepository plantationRepository;
     private final PengirimanEventPublisher eventPublisher;
     private final AuthUserClient authUserClient;
+    private final Environment environment;
 
     public PengirimanService(PengirimanRepository pengirimanRepository,
                              HarvestResultRepository harvestResultRepository,
                              PlantationAssignmentRepository plantationAssignmentRepository,
+                             PlantationRepository plantationRepository,
                              PengirimanEventPublisher eventPublisher,
-                             AuthUserClient authUserClient) {
+                             AuthUserClient authUserClient,
+                             Environment environment) {
         this.pengirimanRepository = pengirimanRepository;
         this.harvestResultRepository = harvestResultRepository;
         this.plantationAssignmentRepository = plantationAssignmentRepository;
+        this.plantationRepository = plantationRepository;
         this.eventPublisher = eventPublisher;
         this.authUserClient = authUserClient;
+        this.environment = environment;
     }
 
     public List<Map<String, Object>> listSupirOnKebunMandor(String mandorId, String search) {
@@ -72,6 +82,15 @@ public class PengirimanService {
 
         List<PlantationAssignment> supirAssignments =
                 plantationAssignmentRepository.findByPlantationIdAndRole(kebunId, PersonnelRole.SUPIR);
+
+        if (isDevProfile()) {
+            List<AuthUserClient.UserSummary> authDrivers = authUserClient.fetchUsersByRole("DRIVER");
+            if (!authDrivers.isEmpty()) {
+                supirAssignments = authDrivers.stream()
+                        .map(driver -> assignPersonnelIfMissing(kebunId, driver.id(), PersonnelRole.SUPIR))
+                        .toList();
+            }
+        }
 
         List<UUID> supirIds = supirAssignments.stream()
                 .map(PlantationAssignment::getPersonnelId)
@@ -334,6 +353,10 @@ public class PengirimanService {
         List<PlantationAssignment> assignments = plantationAssignmentRepository
                 .findByPersonnelIdAndRole(mandorUuid, PersonnelRole.MANDOR);
         if (assignments.isEmpty()) {
+            if (isDevProfile()) {
+                UUID kebunId = ensureDevPlantation().getId();
+                return assignPersonnelIfMissing(kebunId, mandorUuid, PersonnelRole.MANDOR).getPlantationId();
+            }
             throw new BadRequestException("Mandor belum ditugaskan ke kebun");
         }
         return assignments.getFirst().getPlantationId();
@@ -344,8 +367,44 @@ public class PengirimanService {
         boolean assigned = plantationAssignmentRepository
                 .existsByPlantationIdAndPersonnelIdAndRole(kebunId, supirUuid, PersonnelRole.SUPIR);
         if (!assigned) {
+            if (isDevProfile()) {
+                assignPersonnelIfMissing(kebunId, supirUuid, PersonnelRole.SUPIR);
+                return;
+            }
             throw new BadRequestException("Supir tidak bertugas di kebun yang sama dengan mandor");
         }
+    }
+
+    private Plantation ensureDevPlantation() {
+        return plantationRepository.findByCode("DEV-KEBUN-1")
+                .orElseGet(() -> plantationRepository.save(Plantation.builder()
+                        .name("Kebun Dev")
+                        .code("DEV-KEBUN-1")
+                        .areaHa(1.0)
+                        .coordTlLat(0.0)
+                        .coordTlLon(0.0)
+                        .coordTrLat(0.0)
+                        .coordTrLon(0.01)
+                        .coordBrLat(-0.01)
+                        .coordBrLon(0.01)
+                        .coordBlLat(-0.01)
+                        .coordBlLon(0.0)
+                        .isActive(true)
+                        .build()));
+    }
+
+    private PlantationAssignment assignPersonnelIfMissing(UUID kebunId, UUID personnelId, PersonnelRole role) {
+        return plantationAssignmentRepository
+                .findByPlantationIdAndPersonnelIdAndRole(kebunId, personnelId, role)
+                .orElseGet(() -> plantationAssignmentRepository.save(PlantationAssignment.builder()
+                        .plantationId(kebunId)
+                        .personnelId(personnelId)
+                        .role(role)
+                        .build()));
+    }
+
+    private boolean isDevProfile() {
+        return environment.acceptsProfiles(Profiles.of("dev"));
     }
 
     private UUID parsePersonnelId(String rawId, String label) {
