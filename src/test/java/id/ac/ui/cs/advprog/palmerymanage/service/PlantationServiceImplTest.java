@@ -199,6 +199,20 @@ class PlantationServiceImplTest {
             assertThatThrownBy(() -> plantationService.updatePlantation(plantationId, validRequest))
                     .isInstanceOf(PlantationNotFoundException.class);
         }
+
+        @Test
+        void shouldThrowWhenUpdatingWithDuplicateCode() {
+            PlantationRequestDto updateRequest = PlantationRequestDto.builder()
+                    .name("Kebun Sawit B")
+                    .code("KS-002")
+                    .build();
+
+            when(plantationRepository.findById(plantationId)).thenReturn(Optional.of(samplePlantation));
+            when(plantationRepository.existsByCodeAndIdNot("KS-002", plantationId)).thenReturn(true);
+
+            assertThatThrownBy(() -> plantationService.updatePlantation(plantationId, updateRequest))
+                    .isInstanceOf(PlantationCodeAlreadyExistsException.class);
+        }
     }
 
     @Nested
@@ -219,6 +233,20 @@ class PlantationServiceImplTest {
         void shouldThrowWhenDeletingPlantationWithActiveMandor() {
             when(plantationRepository.findById(plantationId)).thenReturn(Optional.of(samplePlantation));
             when(assignmentRepository.existsByPlantationIdAndRole(plantationId, PersonnelRole.MANDOR))
+                    .thenReturn(true);
+
+            assertThatThrownBy(() -> plantationService.deletePlantation(plantationId))
+                    .isInstanceOf(PlantationHasActivePersonnelException.class);
+
+            verify(plantationRepository, never()).delete(any());
+        }
+
+        @Test
+        void shouldThrowWhenDeletingPlantationWithActiveSupir() {
+            when(plantationRepository.findById(plantationId)).thenReturn(Optional.of(samplePlantation));
+            when(assignmentRepository.existsByPlantationIdAndRole(plantationId, PersonnelRole.MANDOR))
+                    .thenReturn(false);
+            when(assignmentRepository.existsByPlantationIdAndRole(plantationId, PersonnelRole.SUPIR))
                     .thenReturn(true);
 
             assertThatThrownBy(() -> plantationService.deletePlantation(plantationId))
@@ -324,6 +352,37 @@ class PlantationServiceImplTest {
             assertThatThrownBy(() -> plantationService.assignSupir(plantationId, supirId))
                     .isInstanceOf(BadRequestException.class)
                     .hasMessageContaining("sudah ditugaskan");
+        }
+
+        @Test
+        void shouldUnassignSupirSuccessfully() {
+            UUID supirId = UUID.randomUUID();
+            PlantationAssignment assignment = PlantationAssignment.builder()
+                    .id(UUID.randomUUID())
+                    .plantationId(plantationId)
+                    .personnelId(supirId)
+                    .role(PersonnelRole.SUPIR)
+                    .build();
+
+            when(plantationRepository.findById(plantationId)).thenReturn(Optional.of(samplePlantation));
+            when(assignmentRepository.findByPlantationIdAndPersonnelIdAndRole(
+                    plantationId, supirId, PersonnelRole.SUPIR)).thenReturn(Optional.of(assignment));
+
+            plantationService.unassignSupir(plantationId, supirId);
+
+            verify(assignmentRepository).delete(assignment);
+        }
+
+        @Test
+        void shouldThrowWhenUnassigningNonExistentSupir() {
+            UUID supirId = UUID.randomUUID();
+            when(plantationRepository.findById(plantationId)).thenReturn(Optional.of(samplePlantation));
+            when(assignmentRepository.findByPlantationIdAndPersonnelIdAndRole(
+                    plantationId, supirId, PersonnelRole.SUPIR)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> plantationService.unassignSupir(plantationId, supirId))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("tidak ditemukan");
         }
     }
 

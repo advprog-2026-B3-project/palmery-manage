@@ -1,6 +1,7 @@
 package id.ac.ui.cs.advprog.palmerymanage.controller;
 
 import id.ac.ui.cs.advprog.palmerymanage.dto.HarvestRequestDto;
+import id.ac.ui.cs.advprog.palmerymanage.dto.HarvestResponseDto;
 import id.ac.ui.cs.advprog.palmerymanage.dto.ValidationRequestDto;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
 import id.ac.ui.cs.advprog.palmerymanage.service.HarvestService;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/harvests")
@@ -21,6 +23,33 @@ public class HarvestController {
 
     public HarvestController(HarvestService harvestService) {
         this.harvestService = harvestService;
+    }
+
+    private HarvestResponseDto mapToResponseDto(HarvestResult result) {
+        if (result == null) return null;
+        return HarvestResponseDto.builder()
+                .id(result.getId())
+                .workerId(result.getWorkerId())
+                .mandorId(result.getMandorId())
+                .plantationId(result.getPlantationId())
+                .harvestDate(result.getHarvestDate())
+                .kgHarvested(result.getKgHarvested())
+                .notes(result.getNotes())
+                .readyForDelivery(result.getReadyForDelivery())
+                .status(result.getStatus())
+                .rejectionReason(result.getRejectionReason())
+                .validatedAt(result.getValidatedAt())
+                .createdAt(result.getCreatedAt())
+                .photos(result.getPhotos() == null ? new java.util.ArrayList<>() : result.getPhotos().stream().map(photo -> 
+                        HarvestResponseDto.PhotoDto.builder()
+                                .id(photo.getId())
+                                .url(photo.getUrl())
+                                .filename(photo.getFilename())
+                                .sizeBytes(photo.getSizeBytes())
+                                .uploadedAt(photo.getUploadedAt())
+                                .build()
+                ).collect(Collectors.toList()))
+                .build();
     }
 
     //Endpoint Buruh Submit Panen
@@ -34,7 +63,7 @@ public class HarvestController {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Akses ditolak: Hanya Buruh yang bisa mencatat hasil panen.");
             }
             HarvestResult result = harvestService.submitHarvest(workerId, request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(result);
+            return ResponseEntity.status(HttpStatus.CREATED).body(mapToResponseDto(result));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (IllegalStateException e) {
@@ -54,7 +83,7 @@ public class HarvestController {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Akses ditolak: Hanya Mandor yang bisa memvalidasi panen.");
             }
             HarvestResult result = harvestService.validateHarvest(mandorId, id, request);
-            return ResponseEntity.ok(result);
+            return ResponseEntity.ok(mapToResponseDto(result));
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -73,7 +102,7 @@ public class HarvestController {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Akses ditolak: Hanya Buruh yang bisa melihat riwayat pribadinya.");
             }
             List<HarvestResult> history = harvestService.getBuruhHistory(workerId, start, end, status);
-            return ResponseEntity.ok(history);
+            return ResponseEntity.ok(history.stream().map(this::mapToResponseDto).collect(Collectors.toList()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -90,7 +119,7 @@ public class HarvestController {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Akses ditolak: Hanya Mandor yang bisa melihat semua data panen.");
             }
             List<HarvestResult> harvests = harvestService.getMandorHistory(date, workerId);
-            return ResponseEntity.ok(harvests);
+            return ResponseEntity.ok(harvests.stream().map(this::mapToResponseDto).collect(Collectors.toList()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -101,7 +130,7 @@ public class HarvestController {
     public ResponseEntity<?> getHarvestById(@PathVariable("id") UUID id) {
         try {
             HarvestResult harvest = harvestService.getHarvestById(id);
-            return ResponseEntity.ok(harvest);
+            return ResponseEntity.ok(mapToResponseDto(harvest));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
@@ -118,7 +147,7 @@ public class HarvestController {
                         .body("Akses ditolak.");
             }
             List<HarvestResult> harvests = harvestService.getHarvestsByWorkerId(workerId);
-            return ResponseEntity.ok(harvests);
+            return ResponseEntity.ok(harvests.stream().map(this::mapToResponseDto).collect(Collectors.toList()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

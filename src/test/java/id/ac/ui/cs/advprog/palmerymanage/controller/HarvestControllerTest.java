@@ -3,6 +3,7 @@ package id.ac.ui.cs.advprog.palmerymanage.controller;
 import id.ac.ui.cs.advprog.palmerymanage.dto.HarvestRequestDto;
 import id.ac.ui.cs.advprog.palmerymanage.dto.ValidationRequestDto;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
+import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.service.HarvestService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -53,11 +54,12 @@ class HarvestControllerTest {
         mandorId = UUID.randomUUID();
         harvestId = UUID.randomUUID();
 
+        Plantation plantation = Plantation.builder().id(UUID.randomUUID()).build();
         sampleHarvest = HarvestResult.builder()
                 .id(harvestId)
                 .workerId(workerId)
                 .mandorId(mandorId)
-                .plantationId(UUID.randomUUID())
+                .plantation(plantation)
                 .harvestDate(LocalDate.now())
                 .kgHarvested(100f)
                 .notes("Panen hari ini lancar")
@@ -299,5 +301,71 @@ class HarvestControllerTest {
         mockMvc.perform(get("/api/harvests/worker/{workerId}", workerId)
                         .header("X-User-Role", "MANDOR"))
                 .andExpect(status().isBadRequest());
+    }
+
+    // Additional coverage: mapToResponseDto with photos populated
+    @Test
+    void submitHarvest_withPhotos_mapsCorrectly() throws Exception {
+        // Build a HarvestResult that includes a photo, to cover the photos-stream branch
+        id.ac.ui.cs.advprog.palmerymanage.model.HarvestPhoto photo =
+                id.ac.ui.cs.advprog.palmerymanage.model.HarvestPhoto.builder()
+                        .id(UUID.randomUUID())
+                        .url("http://rustfs/panen.jpg")
+                        .filename("panen.jpg")
+                        .sizeBytes(1024)
+                        .uploadedAt(java.time.LocalDateTime.now())
+                        .build();
+
+        HarvestResult harvestWithPhoto = HarvestResult.builder()
+                .id(harvestId)
+                .workerId(workerId)
+                .mandorId(mandorId)
+                .plantation(Plantation.builder().id(UUID.randomUUID()).build())
+                .harvestDate(LocalDate.now())
+                .kgHarvested(100f)
+                .notes("Panen dengan foto")
+                .readyForDelivery(false)
+                .status("PENDING")
+                .photos(java.util.List.of(photo))
+                .build();
+
+        HarvestRequestDto request = new HarvestRequestDto();
+        request.setPlantationId(UUID.randomUUID());
+        request.setMandorId(mandorId);
+        request.setHarvestDate(LocalDate.now());
+        request.setKgHarvested(100f);
+        request.setNotes("Panen dengan foto");
+
+        when(harvestService.submitHarvest(eq(workerId), any())).thenReturn(harvestWithPhoto);
+
+        mockMvc.perform(post("/api/harvests")
+                        .header("X-User-Id", workerId.toString())
+                        .header("X-User-Role", "BURUH")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated());
+    }
+
+    // Additional coverage: mapToResponseDto with null photos list
+    @Test
+    void getHarvestById_withNullPhotos_returns200() throws Exception {
+        HarvestResult harvestNullPhotos = HarvestResult.builder()
+                .id(harvestId)
+                .workerId(workerId)
+                .mandorId(mandorId)
+                .plantation(Plantation.builder().id(UUID.randomUUID()).build())
+                .harvestDate(LocalDate.now())
+                .kgHarvested(100f)
+                .notes("Test")
+                .readyForDelivery(true)
+                .status("APPROVED")
+                .build();
+        // Manually set photos to null to cover null-check branch in mapToResponseDto
+        harvestNullPhotos.setPhotos(null);
+
+        when(harvestService.getHarvestById(harvestId)).thenReturn(harvestNullPhotos);
+
+        mockMvc.perform(get("/api/harvests/{id}", harvestId))
+                .andExpect(status().isOk());
     }
 }

@@ -1,7 +1,8 @@
 package id.ac.ui.cs.advprog.palmerymanage.event;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 
@@ -9,15 +10,28 @@ import org.springframework.stereotype.Component;
 @Component
 public class HarvestEventPublisher {
 
-    private final ApplicationEventPublisher applicationEventPublisher;
+    private final RabbitTemplate rabbitTemplate;
 
-    public HarvestEventPublisher(ApplicationEventPublisher applicationEventPublisher) {
-        this.applicationEventPublisher = applicationEventPublisher;
+    @Value("${rabbitmq.exchange.harvest:harvest_exchange}")
+    private String exchange;
+
+    @Value("${rabbitmq.routingkey.harvest.approved:harvest_approved_routing_key}")
+    private String routingKeyApproved;
+
+    @Value("${rabbitmq.routingkey.harvest.submitted:harvest_submitted_routing_key}")
+    private String routingKeySubmitted;
+
+    public HarvestEventPublisher(RabbitTemplate rabbitTemplate) {
+        this.rabbitTemplate = rabbitTemplate;
     }
 
     public void publishHarvestApproved(@NonNull HarvestApprovedEvent event) {
-        applicationEventPublisher.publishEvent(event);
-        log.info("[EVENT] HarvestApproved published: harvestId={}, workerId={}, kg={}",
-                event.harvestId(), event.workerId(), event.kgHarvested());
+        rabbitTemplate.convertAndSend(exchange, routingKeyApproved, event);
+        log.info("[RabbitMQ] HarvestApproved published: harvestId={}", event.harvestId());
+    }
+
+    public void publishHarvestSubmitted(@NonNull HarvestSubmittedEvent event) {
+        rabbitTemplate.convertAndSend(exchange, routingKeySubmitted, event);
+        log.info("[RabbitMQ] HarvestSubmitted published: harvestId={}", event.harvestId());
     }
 }
