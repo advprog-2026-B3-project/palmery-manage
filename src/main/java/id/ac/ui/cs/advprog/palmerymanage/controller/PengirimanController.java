@@ -7,6 +7,7 @@ import id.ac.ui.cs.advprog.palmerymanage.dto.UpdateStatusRequest;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
 import id.ac.ui.cs.advprog.palmerymanage.model.PengirimanStatus;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanResponseMapper;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
 import id.ac.ui.cs.advprog.palmerymanage.service.PengirimanService;
 import jakarta.validation.Valid;
@@ -36,11 +37,14 @@ public class PengirimanController {
 
     private final PengirimanService pengirimanService;
     private final HarvestResultRepository harvestResultRepository;
+    private final PengirimanResponseMapper pengirimanResponseMapper;
 
     public PengirimanController(PengirimanService pengirimanService,
-                              HarvestResultRepository harvestResultRepository) {
+                              HarvestResultRepository harvestResultRepository,
+                              PengirimanResponseMapper pengirimanResponseMapper) {
         this.pengirimanService = pengirimanService;
         this.harvestResultRepository = harvestResultRepository;
+        this.pengirimanResponseMapper = pengirimanResponseMapper;
     }
 
     private String resolveUserId(Authentication authentication, String headerFallback, String defaultFallback) {
@@ -93,7 +97,7 @@ public class PengirimanController {
             @Valid @RequestBody CreatePengirimanRequest request) {
         String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
         Pengiriman pengiriman = pengirimanService.createPengiriman(mandorId, request);
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @GetMapping("/mandor/pengiriman/aktif")
@@ -102,7 +106,7 @@ public class PengirimanController {
             Authentication authentication) {
         String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
         List<Pengiriman> list = pengirimanService.pengirimanAktifMandor(mandorId);
-        return ResponseEntity.ok(list.stream().map(this::toPengirimanResponse).toList());
+        return ResponseEntity.ok(list.stream().map(pengirimanResponseMapper::toResponse).toList());
     }
 
     @GetMapping("/mandor/supir/{supirId}/pengiriman")
@@ -121,7 +125,7 @@ public class PengirimanController {
                 : LocalDate.now();
         List<Pengiriman> list = pengirimanService.pengirimanBySupirForMandor(
                 mandorId, supirId, fromDate, toDate);
-        return ResponseEntity.ok(list.stream().map(this::toPengirimanResponse).toList());
+        return ResponseEntity.ok(list.stream().map(pengirimanResponseMapper::toResponse).toList());
     }
 
     @PostMapping("/mandor/pengiriman/{id}/approve")
@@ -131,7 +135,7 @@ public class PengirimanController {
             @PathVariable UUID id) {
         String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
         Pengiriman pengiriman = pengirimanService.approveByMandor(mandorId, id);
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @PostMapping("/mandor/pengiriman/{id}/reject")
@@ -142,7 +146,7 @@ public class PengirimanController {
             @Valid @RequestBody RejectRequest request) {
         String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
         Pengiriman pengiriman = pengirimanService.rejectByMandor(mandorId, id, request.reason());
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @GetMapping("/supir/pengiriman/aktif")
@@ -151,7 +155,7 @@ public class PengirimanController {
             Authentication authentication) {
         String supirId = resolveUserId(authentication, supirIdHeader, "DRV-1");
         List<Pengiriman> list = pengirimanService.pengirimanAktifSupir(supirId);
-        return ResponseEntity.ok(list.stream().map(this::toPengirimanResponse).toList());
+        return ResponseEntity.ok(list.stream().map(pengirimanResponseMapper::toResponse).toList());
     }
 
     @GetMapping("/supir/pengiriman/riwayat")
@@ -164,7 +168,7 @@ public class PengirimanController {
         LocalDate fromDate = LocalDate.parse(from);
         LocalDate toDate = LocalDate.parse(to);
         List<Pengiriman> list = pengirimanService.riwayatSupir(supirId, fromDate, toDate);
-        return ResponseEntity.ok(list.stream().map(this::toPengirimanResponse).toList());
+        return ResponseEntity.ok(list.stream().map(pengirimanResponseMapper::toResponse).toList());
     }
 
     @PatchMapping("/supir/pengiriman/{id}/status")
@@ -176,7 +180,7 @@ public class PengirimanController {
         String supirId = resolveUserId(authentication, supirIdHeader, "DRV-1");
         PengirimanStatus target = PengirimanStatus.valueOf(request.status());
         Pengiriman pengiriman = pengirimanService.updateStatusSupir(supirId, id, target);
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @GetMapping("/admin/pengiriman/pending")
@@ -185,19 +189,19 @@ public class PengirimanController {
             @RequestParam(value = "date", required = false) String date) {
         LocalDate parsedDate = date != null && !date.isBlank() ? LocalDate.parse(date) : null;
         List<Pengiriman> list = pengirimanService.pendingAdmin(mandorSearch, parsedDate);
-        return ResponseEntity.ok(list.stream().map(this::toPengirimanResponse).toList());
+        return ResponseEntity.ok(list.stream().map(pengirimanResponseMapper::toResponse).toList());
     }
 
     @GetMapping("/admin/pengiriman/{id}")
     public ResponseEntity<Map<String, Object>> detailAdmin(@PathVariable UUID id) {
         Pengiriman pengiriman = pengirimanService.getById(id);
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @PostMapping("/admin/pengiriman/{id}/approve")
     public ResponseEntity<Map<String, Object>> approveAdmin(@PathVariable UUID id) {
         Pengiriman pengiriman = pengirimanService.approveByAdmin(id);
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @PostMapping("/admin/pengiriman/{id}/partial-reject")
@@ -206,7 +210,7 @@ public class PengirimanController {
             @Valid @RequestBody PartialRejectRequest request) {
         Pengiriman pengiriman = pengirimanService.partialRejectByAdmin(
                 id, request.recognizedKg(), request.reason());
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @PostMapping("/admin/pengiriman/{id}/reject")
@@ -214,22 +218,7 @@ public class PengirimanController {
             @PathVariable UUID id,
             @Valid @RequestBody RejectRequest request) {
         Pengiriman pengiriman = pengirimanService.rejectByAdmin(id, request.reason());
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
-    private Map<String, Object> toPengirimanResponse(Pengiriman pengiriman) {
-        Map<String, Object> map = new HashMap<>();
-        map.put("id", pengiriman.getId());
-        map.put("supir_id", pengiriman.getSupirId());
-        map.put("mandor_id", pengiriman.getMandorId());
-        map.put("kebun_id", pengiriman.getKebunId());
-        map.put("total_kg", pengiriman.getTotalKg());
-        map.put("status", pengiriman.getStatus().name());
-        map.put("panen_ids", pengiriman.getPanenIds());
-        map.put("rejected_reason", pengiriman.getRejectedReason());
-        map.put("recognized_kg", pengiriman.getRecognizedKg());
-        map.put("created_at", pengiriman.getCreatedAt());
-        map.put("updated_at", pengiriman.getUpdatedAt());
-        return map;
-    }
 }

@@ -10,10 +10,15 @@ import id.ac.ui.cs.advprog.palmerymanage.model.PengirimanStatus;
 import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.model.PlantationAssignment;
 import id.ac.ui.cs.advprog.palmerymanage.model.PlantationAssignment.PersonnelRole;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.DriverDirectoryLookup;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.DriverProfileLookup;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanEventPublisher;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanStatusTransitionPolicy;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.PengirimanRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationAssignmentRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationRepository;
+import id.ac.ui.cs.advprog.palmerymanage.service.AuthUserClient.UserSummary;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
@@ -57,7 +62,9 @@ public class PengirimanService {
     private final PlantationAssignmentRepository plantationAssignmentRepository;
     private final PlantationRepository plantationRepository;
     private final PengirimanEventPublisher eventPublisher;
-    private final AuthUserClient authUserClient;
+    private final PengirimanStatusTransitionPolicy statusTransitionPolicy;
+    private final DriverProfileLookup driverProfileLookup;
+    private final DriverDirectoryLookup driverDirectoryLookup;
     private final Environment environment;
 
     public PengirimanService(PengirimanRepository pengirimanRepository,
@@ -65,14 +72,18 @@ public class PengirimanService {
                              PlantationAssignmentRepository plantationAssignmentRepository,
                              PlantationRepository plantationRepository,
                              PengirimanEventPublisher eventPublisher,
-                             AuthUserClient authUserClient,
+                             PengirimanStatusTransitionPolicy statusTransitionPolicy,
+                             DriverProfileLookup driverProfileLookup,
+                             DriverDirectoryLookup driverDirectoryLookup,
                              Environment environment) {
         this.pengirimanRepository = pengirimanRepository;
         this.harvestResultRepository = harvestResultRepository;
         this.plantationAssignmentRepository = plantationAssignmentRepository;
         this.plantationRepository = plantationRepository;
         this.eventPublisher = eventPublisher;
-        this.authUserClient = authUserClient;
+        this.statusTransitionPolicy = statusTransitionPolicy;
+        this.driverProfileLookup = driverProfileLookup;
+        this.driverDirectoryLookup = driverDirectoryLookup;
         this.environment = environment;
     }
 
@@ -84,7 +95,7 @@ public class PengirimanService {
                 plantationAssignmentRepository.findByPlantationIdAndRole(kebunId, PersonnelRole.SUPIR);
 
         if (isDevProfile()) {
-            List<AuthUserClient.UserSummary> authDrivers = authUserClient.fetchUsersByRole("DRIVER");
+            List<UserSummary> authDrivers = driverDirectoryLookup.fetchUsersByRole("DRIVER");
             if (!authDrivers.isEmpty()) {
                 supirAssignments = authDrivers.stream()
                         .map(driver -> assignPersonnelIfMissing(kebunId, driver.id(), PersonnelRole.SUPIR))
@@ -95,14 +106,14 @@ public class PengirimanService {
         List<UUID> supirIds = supirAssignments.stream()
                 .map(PlantationAssignment::getPersonnelId)
                 .toList();
-        Map<UUID, AuthUserClient.UserSummary> profiles = authUserClient.fetchUsersByIds(supirIds);
+        Map<UUID, UserSummary> profiles = driverProfileLookup.fetchUsersByIds(supirIds);
 
         String searchLower = search == null ? "" : search.trim().toLowerCase();
         List<Map<String, Object>> result = new ArrayList<>();
         for (PlantationAssignment assignment : supirAssignments) {
             UUID personnelId = assignment.getPersonnelId();
             String supirId = personnelId.toString();
-            AuthUserClient.UserSummary profile = profiles.get(personnelId);
+            UserSummary profile = profiles.get(personnelId);
             String displayName = profile != null
                     ? profile.nama()
                     : "Supir " + supirId.substring(0, Math.min(8, supirId.length()));
@@ -224,7 +235,7 @@ public class PengirimanService {
         }
 
         PengirimanStatus current = pengiriman.getStatus();
-        if (!isValidTransitionForDriver(current, target)) {
+        if (!statusTransitionPolicy.canTransition(current, target)) {
             throw new BadRequestException("Transisi status tidak valid");
         }
 
@@ -236,14 +247,6 @@ public class PengirimanService {
         }
 
         return pengiriman;
-    }
-
-    boolean isValidTransitionForDriver(PengirimanStatus from, PengirimanStatus to) {
-        return switch (from) {
-            case MEMUAT -> to == PengirimanStatus.MENGIRIM;
-            case MENGIRIM -> to == PengirimanStatus.TIBA_DI_TUJUAN;
-            default -> false;
-        };
     }
 
     public Pengiriman approveByMandor(String mandorId, UUID id) {

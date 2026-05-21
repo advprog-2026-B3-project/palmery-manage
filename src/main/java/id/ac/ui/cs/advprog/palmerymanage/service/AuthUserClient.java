@@ -1,6 +1,8 @@
 package id.ac.ui.cs.advprog.palmerymanage.service;
 
 import id.ac.ui.cs.advprog.palmerymanage.config.AuthIntegrationProperties;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.DriverDirectoryLookup;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.DriverProfileLookup;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -17,7 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 @Slf4j
 @Component
-public class AuthUserClient {
+public class AuthUserClient implements DriverProfileLookup, DriverDirectoryLookup {
 
     private final AuthIntegrationProperties properties;
     private final RestTemplate restTemplate = new RestTemplate();
@@ -28,6 +30,7 @@ public class AuthUserClient {
         this.properties = properties;
     }
 
+    @Override
     public Map<UUID, UserSummary> fetchUsersByIds(List<UUID> ids) {
         if (!properties.isEnabled() || ids == null || ids.isEmpty()) {
             return Map.of();
@@ -69,6 +72,7 @@ public class AuthUserClient {
         }
     }
 
+    @Override
     public List<UserSummary> fetchUsersByRole(String role) {
         if (!properties.isEnabled() || role == null || role.isBlank()) {
             return List.of();
