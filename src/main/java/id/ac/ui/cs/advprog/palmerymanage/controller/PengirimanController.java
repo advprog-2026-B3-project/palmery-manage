@@ -225,9 +225,12 @@ public class PengirimanController {
         map.put("kebun_id", pengiriman.getKebunId());
         map.put("total_kg", pengiriman.getTotalKg());
         map.put("status", pengiriman.getStatus().name());
+        map.put("mandor_approval_status", pengiriman.getMandorApprovalStatus().name());
+        map.put("admin_approval_status", pengiriman.getAdminApprovalStatus().name());
         map.put("panen_ids", pengiriman.getPanenIds());
         map.put("rejected_reason", pengiriman.getRejectedReason());
         map.put("recognized_kg", pengiriman.getRecognizedKg());
+        map.put("accepted_kg_by_admin", pengiriman.getAcceptedKgByAdmin());
         map.put("created_at", pengiriman.getCreatedAt());
         map.put("updated_at", pengiriman.getUpdatedAt());
         return map;
