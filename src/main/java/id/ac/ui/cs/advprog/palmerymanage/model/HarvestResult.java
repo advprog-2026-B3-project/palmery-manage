@@ -31,8 +31,9 @@ public class HarvestResult {
     @Column(name = "mandor_id", nullable = false)
     private UUID mandorId;
 
-    @Column(name = "plantation_id", nullable = false)
-    private UUID plantationId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "plantation_id", nullable = false)
+    private Plantation plantation;
 
     @Column(name = "harvest_date", nullable = false)
     private LocalDate harvestDate;
@@ -63,4 +64,8 @@ public class HarvestResult {
     @Builder.Default
     @OneToMany(mappedBy = "harvestResult", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<HarvestPhoto> photos = new ArrayList<>();
+
+    public UUID getPlantationId() {
+        return plantation != null ? plantation.getId() : null;
+    }
 }

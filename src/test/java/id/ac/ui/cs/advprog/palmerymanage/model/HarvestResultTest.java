@@ -16,7 +16,7 @@ class HarvestResultTest {
                 .id(UUID.randomUUID())
                 .workerId(UUID.randomUUID())
                 .mandorId(UUID.randomUUID())
-                .plantationId(UUID.randomUUID())
+                .plantation(Plantation.builder().id(UUID.randomUUID()).name("Kebun A").build())
                 .harvestDate(LocalDate.now())
                 .kgHarvested(100f)
                 .notes("Panen hari ini lancar")
@@ -30,14 +30,14 @@ class HarvestResultTest {
         UUID id = UUID.randomUUID();
         UUID workerId = UUID.randomUUID();
         UUID mandorId = UUID.randomUUID();
-        UUID plantationId = UUID.randomUUID();
+        Plantation plantation = Plantation.builder().id(UUID.randomUUID()).name("Kebun A").build();
         LocalDate date = LocalDate.now();
 
         HarvestResult harvest = HarvestResult.builder()
                 .id(id)
                 .workerId(workerId)
                 .mandorId(mandorId)
-                .plantationId(plantationId)
+                .plantation(plantation)
                 .harvestDate(date)
                 .kgHarvested(150f)
                 .notes("catatan panen")
@@ -48,7 +48,7 @@ class HarvestResultTest {
         assertEquals(id, harvest.getId());
         assertEquals(workerId, harvest.getWorkerId());
         assertEquals(mandorId, harvest.getMandorId());
-        assertEquals(plantationId, harvest.getPlantationId());
+        assertEquals(plantation, harvest.getPlantation());
         assertEquals(date, harvest.getHarvestDate());
         assertEquals(150f, harvest.getKgHarvested());
         assertEquals("catatan panen", harvest.getNotes());
@@ -101,10 +101,11 @@ class HarvestResultTest {
     @Test
     void harvestResult_allArgsConstructor_works() {
         UUID id = UUID.randomUUID();
+        Plantation plantation = Plantation.builder().id(UUID.randomUUID()).build();
         HarvestResult harvest = new HarvestResult(
-                id, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
-                LocalDate.now(), 100f, "notes", false,
-                "PENDING", null, null, null, new ArrayList<>()
+                id, UUID.randomUUID(), UUID.randomUUID(), plantation,
+                LocalDate.now(), 100f, "Notes", false, "PENDING", null,
+                null, LocalDateTime.now(), new ArrayList<>()
         );
         assertEquals(id, harvest.getId());
     }

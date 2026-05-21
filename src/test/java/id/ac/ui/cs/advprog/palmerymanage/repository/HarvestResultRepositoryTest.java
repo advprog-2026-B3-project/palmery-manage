@@ -1,6 +1,7 @@
 package id.ac.ui.cs.advprog.palmerymanage.repository;
 
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
+import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,23 +21,37 @@ class HarvestResultRepositoryTest {
     @Autowired
     private HarvestResultRepository harvestResultRepository;
 
+    @Autowired
+    private PlantationRepository plantationRepository;
+
     private UUID workerId;
     private UUID mandorId;
-    private UUID plantationId;
+    private Plantation savedPlantation;
 
     @BeforeEach
     void setUp() {
         harvestResultRepository.deleteAll();
+        plantationRepository.deleteAll();
         workerId = UUID.randomUUID();
         mandorId = UUID.randomUUID();
-        plantationId = UUID.randomUUID();
+        
+        savedPlantation = plantationRepository.save(Plantation.builder()
+                .name("Kebun A")
+                .code("KBN-" + UUID.randomUUID().toString().substring(0, 8))
+                .areaHa(10.0)
+                .coordTlLat(0.0).coordTlLon(0.0)
+                .coordTrLat(0.0).coordTrLon(1.0)
+                .coordBrLat(1.0).coordBrLon(1.0)
+                .coordBlLat(1.0).coordBlLon(0.0)
+                .isActive(true)
+                .build());
     }
 
     private HarvestResult buildHarvest(UUID wId, LocalDate date, String status) {
         return HarvestResult.builder()
                 .workerId(wId)
                 .mandorId(mandorId)
-                .plantationId(plantationId)
+                .plantation(savedPlantation)
                 .harvestDate(date)
                 .kgHarvested(100f)
                 .notes("Test panen")
