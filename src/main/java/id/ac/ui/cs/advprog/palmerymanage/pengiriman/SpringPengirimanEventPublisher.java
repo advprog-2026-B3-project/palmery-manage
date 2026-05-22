@@ -5,13 +5,15 @@ import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedMandorEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.DomainEventPublisher;
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanTibaEvent;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
-import org.springframework.context.ApplicationEventPublisher;
+import id.ac.ui.cs.advprog.palmerymanage.service.DomainEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Component
 public class SpringPengirimanEventPublisher implements PengirimanEventPublisher {
@@ -26,19 +28,20 @@ public class SpringPengirimanEventPublisher implements PengirimanEventPublisher 
 
     @Override
     public void publishPengirimanTiba(Pengiriman pengiriman) {
-        publisher.publishEvent(new PengirimanTibaEvent(
+        PengirimanTibaEvent event = new PengirimanTibaEvent(
                 pengiriman.getId(),
                 pengiriman.getSupirId(),
                 pengiriman.getMandorId(),
                 pengiriman.getTotalKg(),
                 pengiriman.getPanenIds(),
                 Instant.now()
-        ));
+        );
+        domainEventPublisher.publish("PengirimanTiba", buildShipmentPayload(event, pengiriman.getTotalKg(), "Pengiriman tiba"));
     }
 
     @Override
     public void publishPengirimanApprovedMandor(Pengiriman pengiriman) {
-        publisher.publishEvent(new PengirimanApprovedMandorEvent(
+        PengirimanApprovedMandorEvent event = new PengirimanApprovedMandorEvent(
                 pengiriman.getId(),
                 pengiriman.getSupirId(),
                 pengiriman.getMandorId(),
@@ -51,7 +54,7 @@ public class SpringPengirimanEventPublisher implements PengirimanEventPublisher 
 
     @Override
     public void publishPengirimanApprovedAdmin(Pengiriman pengiriman, int recognizedKg) {
-        publisher.publishEvent(new PengirimanApprovedAdminEvent(
+        PengirimanApprovedAdminEvent event = new PengirimanApprovedAdminEvent(
                 pengiriman.getId(),
                 pengiriman.getSupirId(),
                 pengiriman.getMandorId(),

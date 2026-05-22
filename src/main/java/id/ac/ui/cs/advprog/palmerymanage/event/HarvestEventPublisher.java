@@ -1,8 +1,7 @@
 package id.ac.ui.cs.advprog.palmerymanage.event;
 
+import id.ac.ui.cs.advprog.palmerymanage.service.DomainEventPublisher;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 
@@ -38,8 +37,22 @@ public class HarvestEventPublisher {
     }
 
     public void publishHarvestSubmitted(@NonNull HarvestSubmittedEvent event) {
-        rabbitTemplate.convertAndSend(exchange, routingKeySubmitted, event);
-        log.info("[RabbitMQ] HarvestSubmitted published: harvestId={}", event.harvestId());
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("harvestId", event.harvestId().toString());
+        payload.put("userId", event.workerId());
+        payload.put("buruhUserId", event.workerId());
+        payload.put("workerUserId", event.workerId());
+        payload.put("plantationId", event.plantationId());
+        payload.put("quantityKg", event.kgHarvested());
+        payload.put("kg", event.kgHarvested());
+        payload.put("kgHarvested", event.kgHarvested());
+        payload.put("title", "Panen dikirim");
+        payload.put("message", "Panen baru dikirim dan menunggu review mandor.");
+        payload.put("occurredAt", event.timestamp().toString());
+
+        domainEventPublisher.publish("PanenSubmitted", payload);
+        log.info("[EVENT] HarvestSubmitted published: harvestId={}, workerId={}, kg={}",
+                event.harvestId(), event.workerId(), event.kgHarvested());
     }
 
     private Map<String, Object> harvestApprovedPayload(HarvestApprovedEvent event) {
