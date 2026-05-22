@@ -6,12 +6,8 @@ import id.ac.ui.cs.advprog.palmerymanage.dto.PlantationResponseDto;
 import id.ac.ui.cs.advprog.palmerymanage.event.HarvestApprovedEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.HarvestEventPublisher;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
-import id.ac.ui.cs.advprog.palmerymanage.model.PlantationAssignment;
-import id.ac.ui.cs.advprog.palmerymanage.model.WorkerAssignment;
 import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
-import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationAssignmentRepository;
-import id.ac.ui.cs.advprog.palmerymanage.repository.WorkerAssignmentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,10 +41,7 @@ class HarvestServiceTest {
     private HarvestEventPublisher eventPublisher;
 
     @Mock
-    private WorkerAssignmentRepository workerAssignmentRepository;
-
-    @Mock
-    private PlantationAssignmentRepository plantationAssignmentRepository;
+    private WorkerAssignmentService workerAssignmentService;
 
     @Mock
     private id.ac.ui.cs.advprog.palmerymanage.service.validation.HarvestValidator validator;
@@ -64,18 +57,12 @@ class HarvestServiceTest {
 
     @BeforeEach
     void setUp() {
+        harvestService = new HarvestService(harvestResultRepository, plantationService, plantationValidationService, eventPublisher, workerAssignmentService, List.of(validator));
+        org.springframework.test.util.ReflectionTestUtils.setField(harvestService, "useDummyAssignment", true);
         workerId = UUID.randomUUID();
         mandorId = UUID.randomUUID();
         plantationId = UUID.randomUUID();
         harvestId = UUID.randomUUID();
-        harvestService = new HarvestService(
-                harvestResultRepository,
-                plantationService,
-                plantationValidationService,
-                eventPublisher,
-                List.of(validator),
-                workerAssignmentRepository,
-                plantationAssignmentRepository);
 
         validRequest = new HarvestRequestDto();
         validRequest.setPlantationId(plantationId);
@@ -99,25 +86,9 @@ class HarvestServiceTest {
                 .build();
     }
 
-    private void mockValidAssignmentScope() {
-        WorkerAssignment workerAssignment = WorkerAssignment.builder()
-                .workerId(workerId)
-                .mandorId(mandorId)
-                .build();
-        PlantationAssignment plantationAssignment = PlantationAssignment.builder()
-                .plantationId(plantationId)
-                .personnelId(mandorId)
-                .role(PlantationAssignment.PersonnelRole.MANDOR)
-                .build();
-        when(workerAssignmentRepository.findById(workerId)).thenReturn(Optional.of(workerAssignment));
-        when(plantationAssignmentRepository.findByPersonnelIdAndRole(
-                mandorId, PlantationAssignment.PersonnelRole.MANDOR))
-                .thenReturn(List.of(plantationAssignment));
-    }
 
     @Test
     void submitHarvest_success() {
-        mockValidAssignmentScope();
 
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
 
@@ -136,7 +107,6 @@ class HarvestServiceTest {
         photo.setSizeBytes(10000);
         validRequest.setPhotos(List.of(photo));
 
-        mockValidAssignmentScope();
 
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
 
@@ -154,7 +124,6 @@ class HarvestServiceTest {
         request.setStatus("APPROVED");
 
         when(harvestResultRepository.findById(harvestId)).thenReturn(Optional.of(pendingHarvest));
-        when(workerAssignmentRepository.existsByWorkerIdAndMandorId(workerId, mandorId)).thenReturn(true);
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
 
         HarvestResult result = harvestService.validateHarvest(mandorId, harvestId, request);
@@ -171,7 +140,6 @@ class HarvestServiceTest {
         request.setStatus("APPROVED");
 
         when(harvestResultRepository.findById(harvestId)).thenReturn(Optional.of(pendingHarvest));
-        when(workerAssignmentRepository.existsByWorkerIdAndMandorId(workerId, mandorId)).thenReturn(true);
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
 
         harvestService.validateHarvest(mandorId, harvestId, request);
@@ -193,7 +161,6 @@ class HarvestServiceTest {
         request.setRejectionReason("Foto tidak jelas");
 
         when(harvestResultRepository.findById(harvestId)).thenReturn(Optional.of(pendingHarvest));
-        when(workerAssignmentRepository.existsByWorkerIdAndMandorId(workerId, mandorId)).thenReturn(true);
         when(harvestResultRepository.save(any())).thenReturn(pendingHarvest);
 
         HarvestResult result = harvestService.validateHarvest(mandorId, harvestId, request);
@@ -209,7 +176,6 @@ class HarvestServiceTest {
         request.setRejectionReason("");
 
         when(harvestResultRepository.findById(harvestId)).thenReturn(Optional.of(pendingHarvest));
-        when(workerAssignmentRepository.existsByWorkerIdAndMandorId(workerId, mandorId)).thenReturn(true);
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> harvestService.validateHarvest(mandorId, harvestId, request));
@@ -223,7 +189,6 @@ class HarvestServiceTest {
         request.setRejectionReason(null);
 
         when(harvestResultRepository.findById(harvestId)).thenReturn(Optional.of(pendingHarvest));
-        when(workerAssignmentRepository.existsByWorkerIdAndMandorId(workerId, mandorId)).thenReturn(true);
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> harvestService.validateHarvest(mandorId, harvestId, request));
@@ -371,12 +336,10 @@ class HarvestServiceTest {
 
     @Test
     void getMandorHistory_success() {
-        when(workerAssignmentRepository.findByMandorId(mandorId))
-                .thenReturn(List.of(WorkerAssignment.builder().workerId(workerId).mandorId(mandorId).build()));
-        when(harvestResultRepository.findMandorHistoryByWorkerIds(List.of(workerId), null))
+        when(harvestResultRepository.findMandorHistory(null, null))
                 .thenReturn(List.of(pendingHarvest));
 
-        List<HarvestResult> results = harvestService.getMandorHistory(mandorId, null, null);
+        List<HarvestResult> results = harvestService.getMandorHistory(null, null, null);
 
         assertEquals(1, results.size());
     }
@@ -385,18 +348,19 @@ class HarvestServiceTest {
     void getMandorHistory_withFilters_success() {
         LocalDate date = LocalDate.now();
 
-        when(workerAssignmentRepository.findByMandorId(mandorId))
-                .thenReturn(List.of(WorkerAssignment.builder().workerId(workerId).mandorId(mandorId).build()));
         when(harvestResultRepository.findMandorHistory(date, workerId))
                 .thenReturn(List.of(pendingHarvest));
 
-        List<HarvestResult> results = harvestService.getMandorHistory(mandorId, date, workerId);
+        List<HarvestResult> results = harvestService.getMandorHistory(null, date, workerId);
 
         assertEquals(1, results.size());
     }
 
     @Test
     void validateHarvest_notAnakBuah_apiThrowsException() {
+        org.springframework.test.util.ReflectionTestUtils.setField(harvestService, "useDummyAssignment", false);
+        org.springframework.test.util.ReflectionTestUtils.setField(harvestService, "assignmentApiUrl", "http://localhost:8080/api/assignment");
+        
         ValidationRequestDto request = new ValidationRequestDto();
         request.setStatus("APPROVED");
 
