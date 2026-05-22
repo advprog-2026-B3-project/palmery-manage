@@ -1,9 +1,9 @@
-name: Prod V2 GHCR Publish
+name: Main GHCR Publish
 
 on:
   push:
     branches:
-      - prod-v2
+      - main
   workflow_dispatch:
 
 jobs:
@@ -42,5 +42,5 @@ jobs:
           push: true
           platforms: linux/arm64
           tags: |
-            ghcr.io/${{ steps.owner.outputs.value }}/palmery-manage-backend:prod-v2
-            ghcr.io/${{ steps.owner.outputs.value }}/palmery-manage-backend:prod-v2-${{ github.sha }}
+            ghcr.io/${{ steps.owner.outputs.value }}/palmery-manage-backend:main
+            ghcr.io/${{ steps.owner.outputs.value }}/palmery-manage-backend:main-${{ github.sha }}
