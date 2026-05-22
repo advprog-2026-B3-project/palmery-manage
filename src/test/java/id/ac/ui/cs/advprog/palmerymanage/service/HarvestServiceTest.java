@@ -339,7 +339,7 @@ class HarvestServiceTest {
         when(harvestResultRepository.findMandorHistory(null, null))
                 .thenReturn(List.of(pendingHarvest));
 
-        List<HarvestResult> results = harvestService.getMandorHistory(null, null);
+        List<HarvestResult> results = harvestService.getMandorHistory(null, null, null);
 
         assertEquals(1, results.size());
     }
@@ -351,7 +351,7 @@ class HarvestServiceTest {
         when(harvestResultRepository.findMandorHistory(date, workerId))
                 .thenReturn(List.of(pendingHarvest));
 
-        List<HarvestResult> results = harvestService.getMandorHistory(date, workerId);
+        List<HarvestResult> results = harvestService.getMandorHistory(null, date, workerId);
 
         assertEquals(1, results.size());
     }

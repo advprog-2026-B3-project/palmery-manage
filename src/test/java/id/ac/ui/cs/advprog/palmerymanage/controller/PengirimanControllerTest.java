@@ -5,12 +5,9 @@ import id.ac.ui.cs.advprog.palmerymanage.dto.CreatePengirimanRequest;
 import id.ac.ui.cs.advprog.palmerymanage.dto.PartialRejectRequest;
 import id.ac.ui.cs.advprog.palmerymanage.dto.RejectRequest;
 import id.ac.ui.cs.advprog.palmerymanage.dto.UpdateStatusRequest;
-import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
 import id.ac.ui.cs.advprog.palmerymanage.model.PengirimanStatus;
-import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanResponseMapper;
-import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
 import id.ac.ui.cs.advprog.palmerymanage.service.PengirimanService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,9 +40,6 @@ class PengirimanControllerTest {
 
 	@Mock
 	private PengirimanService pengirimanService;
-
-	@Mock
-	private HarvestResultRepository harvestResultRepository;
 
 	@Mock
 	private PengirimanResponseMapper pengirimanResponseMapper;
@@ -84,14 +78,11 @@ class PengirimanControllerTest {
 
 	@Test
 	void panenSiapAngkut_filtersByMandorHeader() throws Exception {
-		HarvestResult h = new HarvestResult();
-		h.setId(panenId);
-		h.setMandorId(mandorId);
-		h.setPlantation(Plantation.builder().id(UUID.randomUUID()).build());
-		h.setKgHarvested(123f);
-		h.setReadyForDelivery(true);
-
-		when(harvestResultRepository.findByReadyForDeliveryIsTrue()).thenReturn(List.of(h));
+		when(pengirimanService.listPanenSiapAngkutForMandor(mandorId.toString()))
+				.thenReturn(List.of(Map.of(
+						"id", panenId.toString(),
+						"mandor_id", mandorId.toString(),
+						"berat_kg", 123)));
 
 		mockMvc.perform(get("/api/mandor/panen/siap-angkut").header("X-User-Id", mandorId.toString()))
 				.andExpect(status().isOk())
@@ -147,20 +138,13 @@ class PengirimanControllerTest {
 	}
 
 	@Test
-	void panenSiapAngkut_withoutMandorHeaderReturnsAllAndHandlesNullFields() throws Exception {
-		HarvestResult h = new HarvestResult();
-		h.setId(panenId);
-		h.setKgHarvested(null);
-		h.setReadyForDelivery(true);
-		h.setStatus("APPROVED");
-
-		when(harvestResultRepository.findByReadyForDeliveryIsTrue()).thenReturn(List.of(h));
-
-		mockMvc.perform(get("/api/mandor/panen/siap-angkut"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[0].berat_kg").value(0))
-				.andExpect(jsonPath("$[0].kebun_id").doesNotExist())
-				.andExpect(jsonPath("$[0].mandor_id").doesNotExist());
+	void panenSiapAngkut_withoutMandorHeaderDoesNotCallService() throws Exception {
+		try {
+			mockMvc.perform(get("/api/mandor/panen/siap-angkut"));
+		} catch (Exception ignored) {
+			// Standalone MockMvc does not register GlobalExceptionHandler here.
+		}
+		verify(pengirimanService, never()).listPanenSiapAngkutForMandor(any());
 	}
 
 	@Test
@@ -171,6 +155,30 @@ class PengirimanControllerTest {
 		mockMvc.perform(get("/api/mandor/pengiriman/aktif").header("X-User-Id", mandorId.toString()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[0].status").value("MEMUAT"));
+	}
+
+	@Test
+	void detailMandor_returnsOwnedPengiriman() throws Exception {
+		when(pengirimanService.getByIdForMandor(mandorId.toString(), samplePengiriman.getId()))
+				.thenReturn(samplePengiriman);
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("id", samplePengiriman.getId().toString()));
+
+		mockMvc.perform(get("/api/mandor/pengiriman/{id}", samplePengiriman.getId())
+						.header("X-User-Id", mandorId.toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(samplePengiriman.getId().toString()));
+	}
+
+	@Test
+	void detailSupir_returnsOwnedPengiriman() throws Exception {
+		when(pengirimanService.getByIdForSupir(supirId.toString(), samplePengiriman.getId()))
+				.thenReturn(samplePengiriman);
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("id", samplePengiriman.getId().toString()));
+
+		mockMvc.perform(get("/api/supir/pengiriman/{id}", samplePengiriman.getId())
+						.header("X-User-Id", supirId.toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(samplePengiriman.getId().toString()));
 	}
 
 	@Test

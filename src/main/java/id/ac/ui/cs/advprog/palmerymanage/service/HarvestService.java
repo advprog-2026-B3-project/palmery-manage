@@ -202,7 +202,12 @@ public class HarvestService {
         return harvestResultRepository.findBuruhHistory(workerId, startDate, endDate, status);
     }
 
-    public List<HarvestResult> getMandorHistory(LocalDate date, UUID filterWorkerId) {
-        return harvestResultRepository.findMandorHistory(date, filterWorkerId);
+    public List<HarvestResult> getMandorHistory(UUID mandorId, LocalDate date, UUID filterWorkerId) {
+        if (mandorId == null) {
+            return harvestResultRepository.findMandorHistory(date, filterWorkerId);
+        }
+        return harvestResultRepository.findMandorHistory(date, filterWorkerId).stream()
+                .filter(h -> mandorId.equals(h.getMandorId()))
+                .collect(Collectors.toList());
     }
 }

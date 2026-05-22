@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+
 @RestController
 @RequestMapping("/kebun")
 @RequiredArgsConstructor
@@ -101,6 +102,19 @@ public class PlantationController {
     }
 
     /**
+     * POST /kebun/:id/mandor/transfer
+     * Transfer Mandor dari satu Kebun ke Kebun lain — ADMIN only
+     */
+    @PostMapping("/{id}/mandor/transfer")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> transferMandor(
+            @PathVariable UUID id,
+            @Valid @RequestBody TransferPersonnelRequestDto request) {
+        plantationService.transferMandor(id, request.getToPlantationId(), request.getPersonnelId());
+        return ResponseEntity.ok().build();
+    }
+
+    /**
      * POST /kebun/:id/supir
      * Assign Supir ke Kebun — ADMIN only
      */
@@ -126,15 +140,10 @@ public class PlantationController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/mandor/transfer")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> transferMandor(
-            @PathVariable UUID id,
-            @Valid @RequestBody TransferPersonnelRequestDto request) {
-        plantationService.transferMandor(id, request.getToPlantationId(), request.getPersonnelId());
-        return ResponseEntity.ok().build();
-    }
-
+    /**
+     * POST /kebun/:id/supir/transfer
+     * Transfer Supir dari satu Kebun ke Kebun lain — ADMIN only
+     */
     @PostMapping("/{id}/supir/transfer")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> transferSupir(
