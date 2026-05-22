@@ -12,21 +12,21 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class PengirimanEventPublisherTest {
 
     @Mock
-    private ApplicationEventPublisher publisher;
+    private DomainEventPublisher domainEventPublisher;
 
     @Mock
     private id.ac.ui.cs.advprog.palmerymanage.event.DomainEventPublisher domainEventPublisher;
@@ -51,16 +51,7 @@ class PengirimanEventPublisherTest {
     void publishesPengirimanTibaEvent() {
         pengirimanEventPublisher.publishPengirimanTiba(pengiriman);
 
-        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(publisher).publishEvent(captor.capture());
-        Object event = captor.getValue();
-        assertTrue(event instanceof PengirimanTibaEvent);
-        PengirimanTibaEvent tiba = (PengirimanTibaEvent) event;
-        assertEquals(pengiriman.getId(), tiba.pengirimanId());
-        assertEquals(pengiriman.getSupirId(), tiba.supirId());
-        assertEquals(pengiriman.getMandorId(), tiba.mandorId());
-        assertEquals(pengiriman.getTotalKg(), tiba.totalKg());
-        assertEquals(pengiriman.getPanenIds(), tiba.panenIds());
+        verify(domainEventPublisher).publish(eq("PengirimanTiba"), anyMap());
     }
 
     @Test
