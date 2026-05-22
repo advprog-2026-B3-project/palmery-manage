@@ -36,7 +36,16 @@ public interface HarvestResultRepository extends JpaRepository<HarvestResult, UU
             @Param("workerId") UUID workerId
     );
 
+    @Query("SELECT h FROM HarvestResult h WHERE h.workerId IN :workerIds " +
+            "AND (cast(:date as date) IS NULL OR h.harvestDate = :date)")
+    List<HarvestResult> findMandorHistoryByWorkerIds(
+            @Param("workerIds") List<UUID> workerIds,
+            @Param("date") LocalDate date
+    );
+
     List<HarvestResult> findByReadyForDeliveryIsTrue();
+
+    List<HarvestResult> findByMandorIdAndReadyForDeliveryIsTrue(UUID mandorId);
 
     List<HarvestResult> findByPlantation_Id(UUID plantationId);
 }

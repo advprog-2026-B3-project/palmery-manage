@@ -21,11 +21,11 @@ public interface PlantationService {
 
     void unassignMandor(UUID plantationId, UUID mandorId);
 
+    void transferMandor(UUID fromPlantationId, UUID toPlantationId, UUID mandorId);
+
     void assignSupir(UUID plantationId, UUID supirId);
 
     void unassignSupir(UUID plantationId, UUID supirId);
-
-    void transferMandor(UUID fromPlantationId, UUID toPlantationId, UUID mandorId);
 
     void transferSupir(UUID fromPlantationId, UUID toPlantationId, UUID supirId);
 }
