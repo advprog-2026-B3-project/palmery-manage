@@ -137,6 +137,9 @@ class PengirimanServiceTest {
         pengiriman.setTotalKg(150);
         pengiriman.setPanenIds(List.of(harvestId1.toString(), harvestId2.toString()));
         pengiriman.setStatus(PengirimanStatus.MEMUAT);
+
+        lenient().when(pengirimanRepository.save(any(Pengiriman.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     private PlantationAssignment createAssignment(UUID personnelId, PlantationAssignment.PersonnelRole role) {
