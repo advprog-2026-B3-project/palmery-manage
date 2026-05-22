@@ -35,6 +35,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public: health check / actuator
                         .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/debug/healthcheck").permitAll()
 
                         // GET kebun: ADMIN & MANDOR
                         .requestMatchers(HttpMethod.GET, "/kebun", "/kebun/**").hasAnyRole("ADMIN", "MANDOR")
