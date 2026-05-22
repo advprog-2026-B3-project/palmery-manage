@@ -1,69 +1,49 @@
 package id.ac.ui.cs.advprog.palmerymanage.pengiriman;
 
-import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedAdminEvent;
-import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedMandorEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.DomainEventPublisher;
-import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanTibaEvent;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
-import id.ac.ui.cs.advprog.palmerymanage.service.DomainEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
-import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 @Component
 public class SpringPengirimanEventPublisher implements PengirimanEventPublisher {
 
-    private final ApplicationEventPublisher publisher;
     private final DomainEventPublisher domainEventPublisher;
 
-    public SpringPengirimanEventPublisher(ApplicationEventPublisher publisher, DomainEventPublisher domainEventPublisher) {
-        this.publisher = publisher;
+    public SpringPengirimanEventPublisher(DomainEventPublisher domainEventPublisher) {
         this.domainEventPublisher = domainEventPublisher;
     }
 
     @Override
     public void publishPengirimanTiba(Pengiriman pengiriman) {
-        PengirimanTibaEvent event = new PengirimanTibaEvent(
-                pengiriman.getId(),
-                pengiriman.getSupirId(),
-                pengiriman.getMandorId(),
-                pengiriman.getTotalKg(),
-                pengiriman.getPanenIds(),
-                Instant.now()
-        );
-        domainEventPublisher.publish("PengirimanTiba", buildShipmentPayload(event, pengiriman.getTotalKg(), "Pengiriman tiba"));
+        domainEventPublisher.publish("PengirimanTiba", shipmentArrivedPayload(pengiriman));
     }
 
     @Override
     public void publishPengirimanApprovedMandor(Pengiriman pengiriman) {
-        PengirimanApprovedMandorEvent event = new PengirimanApprovedMandorEvent(
-                pengiriman.getId(),
-                pengiriman.getSupirId(),
-                pengiriman.getMandorId(),
-                pengiriman.getTotalKg(),
-                pengiriman.getPanenIds(),
-                Instant.now()
-        ));
         domainEventPublisher.publish("PENGIRIMAN_APPROVED_BY_MANDOR", pengirimanApprovedMandorPayload(pengiriman));
     }
 
     @Override
     public void publishPengirimanApprovedAdmin(Pengiriman pengiriman, int recognizedKg) {
-        PengirimanApprovedAdminEvent event = new PengirimanApprovedAdminEvent(
-                pengiriman.getId(),
-                pengiriman.getSupirId(),
-                pengiriman.getMandorId(),
-                pengiriman.getTotalKg(),
-                recognizedKg,
-                pengiriman.getPanenIds(),
-                Instant.now()
-        ));
         domainEventPublisher.publish("PENGIRIMAN_APPROVED_BY_ADMIN", pengirimanApprovedAdminPayload(pengiriman, recognizedKg));
+    }
+
+    private Map<String, Object> shipmentArrivedPayload(Pengiriman pengiriman) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("pengirimanId", pengiriman.getId().toString());
+        payload.put("supirId", pengiriman.getSupirId());
+        payload.put("mandorId", pengiriman.getMandorId());
+        payload.put("userId", pengiriman.getSupirId());
+        payload.put("totalKg", pengiriman.getTotalKg());
+        payload.put("quantityKg", BigDecimal.valueOf(pengiriman.getTotalKg()));
+        payload.put("panenIds", pengiriman.getPanenIds());
+        payload.put("description", "Pengiriman tiba untuk " + pengiriman.getTotalKg() + " Kg");
+        payload.put("title", "Pengiriman tiba");
+        return payload;
     }
 
     private Map<String, Object> pengirimanApprovedMandorPayload(Pengiriman pengiriman) {

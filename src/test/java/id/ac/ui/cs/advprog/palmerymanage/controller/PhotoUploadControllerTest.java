@@ -1,42 +1,35 @@
 package id.ac.ui.cs.advprog.palmerymanage.controller;
 
-import id.ac.ui.cs.advprog.palmerymanage.service.PhotoUploadAsyncService;
+import id.ac.ui.cs.advprog.palmerymanage.service.RustfsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.context.annotation.Import;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import id.ac.ui.cs.advprog.palmerymanage.config.DevSecurityConfig;
 
-import java.util.concurrent.CompletableFuture;
-
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(PhotoUploadController.class)
 @ActiveProfiles("dev")
 @Import(DevSecurityConfig.class)
-@TestPropertySource(properties = {
-        "rustfs.public-url=http://mock-rustfs.com",
-        "rustfs.bucket=test-bucket"
-})
 class PhotoUploadControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
     @MockBean
-    private PhotoUploadAsyncService photoUploadAsyncService;
+    private RustfsService rustfsService;
 
     private MockMultipartFile validFile;
     private MockMultipartFile emptyFile;
@@ -51,18 +44,22 @@ class PhotoUploadControllerTest {
 
     @Test
     void testUploadPhoto_Success() throws Exception {
-        when(photoUploadAsyncService.uploadFileAsync(any(byte[].class), anyString(), anyString()))
-                .thenReturn(CompletableFuture.completedFuture(null));
+        when(rustfsService.uploadFile(any()))
+                .thenReturn(new RustfsService.StoredFile(
+                        "generated_test.jpg",
+                        "https://api-manage.palmery.my.id/assets/test-bucket/generated_test.jpg"
+                ));
 
         mockMvc.perform(multipart("/api/harvests/photos")
                         .file(validFile)
                         .header("X-User-Role", "BURUH"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.url").exists())
+                .andExpect(jsonPath("$.url").value("/api/harvests/photos/generated_test.jpg"))
+                .andExpect(jsonPath("$.storageUrl").value("https://api-manage.palmery.my.id/assets/test-bucket/generated_test.jpg"))
                 .andExpect(jsonPath("$.filename").value("test.jpg"))
                 .andExpect(jsonPath("$.sizeBytes").value(validFile.getSize()));
 
-        verify(photoUploadAsyncService).uploadFileAsync(any(byte[].class), anyString(), anyString());
+        verify(rustfsService).uploadFile(any());
     }
 
     @Test
@@ -105,29 +102,47 @@ class PhotoUploadControllerTest {
     @Test
     void testUploadPhoto_NullOriginalFilename() throws Exception {
         MockMultipartFile nullNameFile = new MockMultipartFile("file", (String) null, "image/jpeg", "dummy image content".getBytes());
-        when(photoUploadAsyncService.uploadFileAsync(any(byte[].class), anyString(), anyString()))
-                .thenReturn(CompletableFuture.completedFuture(null));
+        when(rustfsService.uploadFile(any()))
+                .thenReturn(new RustfsService.StoredFile(
+                        "generated_file",
+                        "https://api-manage.palmery.my.id/assets/test-bucket/generated_file"
+                ));
 
         mockMvc.perform(multipart("/api/harvests/photos")
                         .file(nullNameFile)
                         .header("X-User-Role", "BURUH"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.filename").value(""));
+                .andExpect(jsonPath("$.filename").value("file"));
     }
 
     @Test
-    void testUploadPhoto_IOException() throws Exception {
-        MockMultipartFile ioExceptionFile = new MockMultipartFile("file", "test.jpg", "image/jpeg", "dummy".getBytes()) {
-            @Override
-            public byte[] getBytes() throws java.io.IOException {
-                throw new java.io.IOException("Simulated IO Exception");
-            }
-        };
+    void testUploadPhoto_UploadFailure() throws Exception {
+        when(rustfsService.uploadFile(any())).thenThrow(new RuntimeException("Gagal upload foto ke Rustfs: Simulated failure"));
 
         mockMvc.perform(multipart("/api/harvests/photos")
-                        .file(ioExceptionFile)
+                        .file(validFile)
                         .header("X-User-Role", "BURUH"))
                 .andExpect(status().isInternalServerError())
-                .andExpect(content().string("Gagal membaca file: Simulated IO Exception"));
+                .andExpect(content().string("Gagal upload foto ke Rustfs: Simulated failure"));
+    }
+
+    @Test
+    void testReadPhoto_Success() throws Exception {
+        when(rustfsService.readFile("generated_test.jpg"))
+                .thenReturn(new RustfsService.StoredObject("image-bytes".getBytes(), "image/jpeg"));
+
+        mockMvc.perform(get("/api/harvests/photos/generated_test.jpg"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("image/jpeg"))
+                .andExpect(content().bytes("image-bytes".getBytes()));
+    }
+
+    @Test
+    void testReadPhoto_NotFound() throws Exception {
+        when(rustfsService.readFile("missing.jpg"))
+                .thenThrow(software.amazon.awssdk.services.s3.model.NoSuchKeyException.builder().message("missing").build());
+
+        mockMvc.perform(get("/api/harvests/photos/missing.jpg"))
+                .andExpect(status().isNotFound());
     }
 }

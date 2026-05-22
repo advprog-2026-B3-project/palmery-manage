@@ -5,16 +5,26 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Paths;
 import java.util.UUID;
 
 @Service
 public class RustfsService {
+
+    public record StoredFile(String key, String publicUrl) {}
+
+    public record StoredObject(byte[] bytes, String contentType) {}
 
     private final S3Client s3Client;
     private final String bucket;
@@ -39,28 +49,57 @@ public class RustfsService {
                 .build();
     }
 
-    //Upload file ke Rustfs & return URL publik
-    public String uploadFile(MultipartFile file) {
+    // Upload file ke bucket dan return key + URL publik bucket path.
+    public StoredFile uploadFile(MultipartFile file) {
         try {
-            String originalFilename = file.getOriginalFilename() != null
-                    ? file.getOriginalFilename()
-                    : "file";
-
-            String filename = UUID.randomUUID() + "_" + originalFilename;
-
-            PutObjectRequest request = PutObjectRequest.builder()
-                    .bucket(bucket)
-                    .key(filename)
-                    .contentType(file.getContentType())
-                    .build();
-
-            s3Client.putObject(request,
-                    RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
-
-            return publicUrl + "/" + bucket + "/" + filename;
-
-        } catch (Exception e) {
+            String filename = buildObjectKey(file.getOriginalFilename());
+            String contentType = file.getContentType() == null ? "application/octet-stream" : file.getContentType();
+            putObject(filename, contentType, file.getBytes());
+            return new StoredFile(filename, buildPublicUrl(filename));
+        } catch (IOException e) {
             throw new RuntimeException("Gagal upload foto ke Rustfs: " + e.getMessage(), e);
         }
+    }
+
+    public StoredObject readFile(String key) {
+        try {
+            GetObjectRequest request = GetObjectRequest.builder()
+                    .bucket(bucket)
+                    .key(key)
+                    .build();
+
+            ResponseBytes<GetObjectResponse> objectBytes = s3Client.getObjectAsBytes(request);
+            String contentType = objectBytes.response().contentType();
+            return new StoredObject(objectBytes.asByteArray(), contentType == null ? "application/octet-stream" : contentType);
+        } catch (NoSuchKeyException exception) {
+            throw exception;
+        } catch (Exception e) {
+            throw new RuntimeException("Gagal membaca file dari Rustfs: " + e.getMessage(), e);
+        }
+    }
+
+    public String buildPublicUrl(String key) {
+        return stripTrailingSlash(publicUrl) + "/" + bucket + "/" + key;
+    }
+
+    private void putObject(String key, String contentType, byte[] fileData) {
+        PutObjectRequest request = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .contentType(contentType)
+                .build();
+
+        s3Client.putObject(request, RequestBody.fromBytes(fileData));
+    }
+
+    private String buildObjectKey(String originalFilename) {
+        String safeName = originalFilename == null || originalFilename.isBlank()
+                ? "file"
+                : Paths.get(originalFilename).getFileName().toString().replaceAll("[^A-Za-z0-9._-]", "_");
+        return UUID.randomUUID() + "_" + safeName;
+    }
+
+    private String stripTrailingSlash(String value) {
+        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 }

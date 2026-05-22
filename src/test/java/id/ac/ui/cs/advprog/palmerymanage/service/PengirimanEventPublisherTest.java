@@ -1,8 +1,5 @@
 package id.ac.ui.cs.advprog.palmerymanage.service;
 
-import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedAdminEvent;
-import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedMandorEvent;
-import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanTibaEvent;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
 import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanEventPublisher;
 import id.ac.ui.cs.advprog.palmerymanage.pengiriman.SpringPengirimanEventPublisher;
@@ -18,15 +15,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.mockito.ArgumentMatchers.anyMap;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class PengirimanEventPublisherTest {
-
-    @Mock
-    private DomainEventPublisher domainEventPublisher;
 
     @Mock
     private id.ac.ui.cs.advprog.palmerymanage.event.DomainEventPublisher domainEventPublisher;
@@ -37,7 +32,7 @@ class PengirimanEventPublisherTest {
 
     @BeforeEach
     void setUp() {
-        pengirimanEventPublisher = new SpringPengirimanEventPublisher(publisher, domainEventPublisher);
+        pengirimanEventPublisher = new SpringPengirimanEventPublisher(domainEventPublisher);
 
         pengiriman = new Pengiriman();
         pengiriman.setId(UUID.randomUUID());
@@ -49,28 +44,35 @@ class PengirimanEventPublisherTest {
 
     @Test
     void publishesPengirimanTibaEvent() {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> payloadCaptor =
+                ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+
         pengirimanEventPublisher.publishPengirimanTiba(pengiriman);
 
-        verify(domainEventPublisher).publish(eq("PengirimanTiba"), anyMap());
+        verify(domainEventPublisher).publish(eq("PengirimanTiba"), payloadCaptor.capture());
+        Map<String, Object> payload = payloadCaptor.getValue();
+        assertEquals(pengiriman.getId().toString(), payload.get("pengirimanId"));
+        assertEquals(pengiriman.getSupirId(), payload.get("supirId"));
+        assertEquals(pengiriman.getMandorId(), payload.get("mandorId"));
+        assertEquals(pengiriman.getSupirId(), payload.get("userId"));
+        assertEquals(pengiriman.getTotalKg(), payload.get("totalKg"));
+        assertEquals(BigDecimal.valueOf(pengiriman.getTotalKg()), payload.get("quantityKg"));
+        assertEquals(pengiriman.getPanenIds(), payload.get("panenIds"));
+        assertEquals("Pengiriman tiba untuk " + pengiriman.getTotalKg() + " Kg", payload.get("description"));
+        assertEquals("Pengiriman tiba", payload.get("title"));
     }
 
     @Test
     void publishesPengirimanApprovedMandorEvent() {
-        pengirimanEventPublisher.publishPengirimanApprovedMandor(pengiriman);
-
-        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(publisher).publishEvent(captor.capture());
-        Object event = captor.getValue();
-        assertTrue(event instanceof PengirimanApprovedMandorEvent);
-        PengirimanApprovedMandorEvent approved = (PengirimanApprovedMandorEvent) event;
-        assertEquals(pengiriman.getId(), approved.pengirimanId());
-        assertEquals(pengiriman.getTotalKg(), approved.totalKg());
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> payloadCaptor =
-            ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
-        verify(domainEventPublisher).publish(eq("PENGIRIMAN_APPROVED_BY_MANDOR"), payloadCaptor.capture());
+                ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
 
-        Map<String, Object> payload = (Map<String, Object>) payloadCaptor.getValue();
+        pengirimanEventPublisher.publishPengirimanApprovedMandor(pengiriman);
+
+        verify(domainEventPublisher, times(1)).publish(eq("PENGIRIMAN_APPROVED_BY_MANDOR"), payloadCaptor.capture());
+        Map<String, Object> payload = payloadCaptor.getValue();
         assertEquals(pengiriman.getId().toString(), payload.get("pengirimanId"));
         assertEquals(pengiriman.getSupirId(), payload.get("supirId"));
         assertEquals(pengiriman.getMandorId(), payload.get("mandorId"));
@@ -84,21 +86,14 @@ class PengirimanEventPublisherTest {
 
     @Test
     void publishesPengirimanApprovedAdminEventWithRecognizedKg() {
-        pengirimanEventPublisher.publishPengirimanApprovedAdmin(pengiriman, 250);
-
-        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(publisher).publishEvent(captor.capture());
-        Object event = captor.getValue();
-        assertTrue(event instanceof PengirimanApprovedAdminEvent);
-        PengirimanApprovedAdminEvent approved = (PengirimanApprovedAdminEvent) event;
-        assertEquals(pengiriman.getId(), approved.pengirimanId());
-        assertEquals(250, approved.recognizedKg());
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> payloadCaptor =
-            ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
-        verify(domainEventPublisher).publish(eq("PENGIRIMAN_APPROVED_BY_ADMIN"), payloadCaptor.capture());
+                ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
 
-        Map<String, Object> payload = (Map<String, Object>) payloadCaptor.getValue();
+        pengirimanEventPublisher.publishPengirimanApprovedAdmin(pengiriman, 250);
+
+        verify(domainEventPublisher, times(1)).publish(eq("PENGIRIMAN_APPROVED_BY_ADMIN"), payloadCaptor.capture());
+        Map<String, Object> payload = payloadCaptor.getValue();
         assertEquals(pengiriman.getId().toString(), payload.get("pengirimanId"));
         assertEquals(pengiriman.getSupirId(), payload.get("supirId"));
         assertEquals(pengiriman.getMandorId(), payload.get("mandorId"));

@@ -7,6 +7,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -15,22 +17,28 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class HarvestEventPublisherTest {
 
     @Mock
-    private id.ac.ui.cs.advprog.palmerymanage.service.DomainEventPublisher domainEventPublisher;
+    private DomainEventPublisher domainEventPublisher;
 
     @Mock
-    private DomainEventPublisher domainEventPublisher;
+    private RabbitTemplate rabbitTemplate;
 
     @InjectMocks
     private HarvestEventPublisher harvestEventPublisher;
 
     @BeforeEach
-    void setUp() {}
+    void setUp() {
+        ReflectionTestUtils.setField(harvestEventPublisher, "exchange", "harvest_exchange");
+        ReflectionTestUtils.setField(harvestEventPublisher, "routingKeyApproved", "harvest_approved_routing_key");
+        ReflectionTestUtils.setField(harvestEventPublisher, "routingKeySubmitted", "harvest_submitted_routing_key");
+    }
 
     @Test
     void testPublishHarvestApproved() {
@@ -43,11 +51,11 @@ class HarvestEventPublisherTest {
 
         verify(rabbitTemplate, times(1)).convertAndSend("harvest_exchange", "harvest_approved_routing_key", event);
         @SuppressWarnings("unchecked")
-        org.mockito.ArgumentCaptor<Map<String, Object>> payloadCaptor =
-            org.mockito.ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+        ArgumentCaptor<Map<String, Object>> payloadCaptor =
+                ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
         verify(domainEventPublisher).publish(eq("HASIL_PANEN_APPROVED"), payloadCaptor.capture());
 
-        Map<String, Object> payload = (Map<String, Object>) payloadCaptor.getValue();
+        Map<String, Object> payload = payloadCaptor.getValue();
         assertEquals(harvestId.toString(), payload.get("harvestId"));
         assertEquals("worker-1", payload.get("workerId"));
         assertEquals("worker-1", payload.get("userId"));
@@ -70,11 +78,13 @@ class HarvestEventPublisherTest {
 
         harvestEventPublisher.publishHarvestSubmitted(event);
 
+        verifyNoInteractions(rabbitTemplate);
         ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
         verify(domainEventPublisher, times(1)).publish(eq("PanenSubmitted"), payloadCaptor.capture());
+
         Map<String, Object> payload = payloadCaptor.getValue();
-        org.junit.jupiter.api.Assertions.assertEquals(harvestId.toString(), payload.get("harvestId"));
-        org.junit.jupiter.api.Assertions.assertEquals("worker-1", payload.get("userId"));
-        org.junit.jupiter.api.Assertions.assertEquals(50.0f, payload.get("kgHarvested"));
+        assertEquals(harvestId.toString(), payload.get("harvestId"));
+        assertEquals("worker-1", payload.get("userId"));
+        assertEquals(50.0f, payload.get("kgHarvested"));
     }
 }

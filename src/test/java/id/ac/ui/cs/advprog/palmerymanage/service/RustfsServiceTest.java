@@ -7,8 +7,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 
@@ -48,10 +51,11 @@ class RustfsServiceTest {
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build());
 
-        String resultUrl = rustfsService.uploadFile(file);
+        RustfsService.StoredFile result = rustfsService.uploadFile(file);
 
-        assertTrue(resultUrl.startsWith("http://public-url.com/test-bucket/"));
-        assertTrue(resultUrl.endsWith("_test-image.jpg"));
+        assertTrue(result.publicUrl().startsWith("http://public-url.com/test-bucket/"));
+        assertTrue(result.publicUrl().endsWith("_test-image.jpg"));
+        assertTrue(result.key().endsWith("_test-image.jpg"));
         
         verify(s3Client, times(1)).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
@@ -67,10 +71,10 @@ class RustfsServiceTest {
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build());
 
-        String resultUrl = rustfsService.uploadFile(file);
+        RustfsService.StoredFile result = rustfsService.uploadFile(file);
 
-        assertTrue(resultUrl.startsWith("http://public-url.com/test-bucket/"));
-        assertTrue(resultUrl.endsWith("_file"));
+        assertTrue(result.publicUrl().startsWith("http://public-url.com/test-bucket/"));
+        assertTrue(result.publicUrl().endsWith("_file"));
 
         verify(s3Client, times(1)).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
@@ -90,5 +94,18 @@ class RustfsServiceTest {
 
         assertTrue(exception.getMessage().contains("Gagal upload foto ke Rustfs"));
         assertTrue(exception.getCause().getMessage().contains("S3 Connection Error"));
+    }
+
+    @Test
+    void testReadFile_Success() {
+        GetObjectResponse response = GetObjectResponse.builder().contentType("image/png").build();
+        ResponseBytes<GetObjectResponse> objectBytes = ResponseBytes.fromByteArray(response, "payload".getBytes());
+
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class))).thenReturn(objectBytes);
+
+        RustfsService.StoredObject result = rustfsService.readFile("test-image.png");
+
+        assertArrayEquals("payload".getBytes(), result.bytes());
+        assertEquals("image/png", result.contentType());
     }
 }

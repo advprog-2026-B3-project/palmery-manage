@@ -1,31 +1,31 @@
 package id.ac.ui.cs.advprog.palmerymanage.controller;
 
-import id.ac.ui.cs.advprog.palmerymanage.service.PhotoUploadAsyncService;
-import org.springframework.beans.factory.annotation.Value;
+import id.ac.ui.cs.advprog.palmerymanage.service.RustfsService;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/harvests/photos")
 public class PhotoUploadController {
 
-    private final PhotoUploadAsyncService photoUploadAsyncService;
-    private final String publicUrl;
-    private final String bucket;
+    private final RustfsService rustfsService;
 
-    public PhotoUploadController(
-            PhotoUploadAsyncService photoUploadAsyncService,
-            @Value("${rustfs.public-url}") String publicUrl,
-            @Value("${rustfs.bucket}") String bucket) {
-        this.photoUploadAsyncService = photoUploadAsyncService;
-        this.publicUrl = publicUrl;
-        this.bucket = bucket;
+    public PhotoUploadController(RustfsService rustfsService) {
+        this.rustfsService = rustfsService;
     }
 
     @PostMapping
@@ -47,29 +47,31 @@ public class PhotoUploadController {
         }
 
         try {
-            // Baca byte[] di main thread sebelum stream ditutup oleh Tomcat
-            byte[] fileData = file.getBytes();
-            String originalFilename = file.getOriginalFilename() != null
-                    ? file.getOriginalFilename()
-                    : "file";
-            String filename = UUID.randomUUID() + "_" + originalFilename;
-
-            // Generate URL secara instan
-            String url = publicUrl + "/" + bucket + "/" + filename;
-
-            // Kirim upload ke background thread (non-blocking)
-            photoUploadAsyncService.uploadFileAsync(fileData, filename, contentType);
-
-            // Response langsung dikembalikan tanpa menunggu upload selesai
+            RustfsService.StoredFile storedFile = rustfsService.uploadFile(file);
             Map<String, Object> response = new HashMap<>();
-            response.put("url", url);
-            response.put("filename", originalFilename);
+            response.put("url", "/api/harvests/photos/" + storedFile.key());
+            response.put("storageUrl", storedFile.publicUrl());
+            response.put("filename", file.getOriginalFilename() != null ? file.getOriginalFilename() : "file");
             response.put("sizeBytes", file.getSize());
 
             return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.internalServerError().body(e.getMessage());
+        }
+    }
 
-        } catch (IOException e) {
-            return ResponseEntity.internalServerError().body("Gagal membaca file: " + e.getMessage());
+    @GetMapping("/{filename:.+}")
+    public ResponseEntity<?> readPhoto(@PathVariable("filename") String filename) {
+        try {
+            RustfsService.StoredObject storedObject = rustfsService.readFile(filename);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(storedObject.contentType()))
+                    .cacheControl(CacheControl.maxAge(30, TimeUnit.DAYS).cachePublic())
+                    .body(storedObject.bytes());
+        } catch (NoSuchKeyException exception) {
+            return ResponseEntity.notFound().build();
+        } catch (RuntimeException exception) {
+            return ResponseEntity.internalServerError().body(exception.getMessage());
         }
     }
 }
