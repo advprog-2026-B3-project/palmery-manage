@@ -160,13 +160,6 @@ public class PengirimanService {
             throw new BadRequestException("Semua hasil panen harus berstatus Siap Angkut");
         }
 
-        int total = (int) Math.round(panenList.stream()
-                .mapToDouble(p -> p.getKgHarvested() == null ? 0.0 : p.getKgHarvested())
-                .sum());
-        if (total > MAX_TOTAL_KG) {
-            throw new OverWeightException("Total berat maksimum 400 kg");
-        }
-
         boolean notOwned = panenList.stream()
                 .anyMatch(p -> p.getMandorId() == null || !p.getMandorId().equals(mandorUuid));
         if (notOwned) {
@@ -179,8 +172,24 @@ public class PengirimanService {
             throw new BadRequestException("Hasil panen harus berasal dari kebun yang sama dengan mandor");
         }
 
-        // Mark harvests as no longer available for delivery
+        int totalAvailable = panenList.stream()
+                .mapToInt(this::resolveAvailableKg)
+                .sum();
+        boolean partialSingleHarvest = panenList.size() == 1 && totalAvailable > MAX_TOTAL_KG;
+        if (totalAvailable > MAX_TOTAL_KG && !partialSingleHarvest) {
+            throw new OverWeightException("Total berat maksimum 400 kg");
+        }
+
+        int total = 0;
         for (HarvestResult panen : panenList) {
+            int availableKg = resolveAvailableKg(panen);
+            int allocatedKg = partialSingleHarvest ? Math.min(availableKg, MAX_TOTAL_KG) : availableKg;
+            if (allocatedKg <= 0) {
+                throw new BadRequestException("Hasil panen tidak memiliki berat yang dapat dikirim");
+            }
+
+            total += allocatedKg;
+            panen.setAvailableKg((float) (availableKg - allocatedKg));
             panen.setReadyForDelivery(false);
         }
         harvestResultRepository.saveAll(panenList);
@@ -236,6 +245,7 @@ public class PengirimanService {
         }
 
         pengiriman.setMandorApprovalStatus(ApprovalStatus.APPROVED);
+        refreshHarvestAvailabilityAfterMandorDecision(pengiriman, true);
         eventPublisher.publishPengirimanApprovedMandor(pengiriman);
 
         log.info("Pengiriman {} approved by mandor {}", id, mandorId);
@@ -256,6 +266,7 @@ public class PengirimanService {
 
         pengiriman.setMandorApprovalStatus(ApprovalStatus.REJECTED);
         pengiriman.setRejectedReason(reason.trim());
+        refreshHarvestAvailabilityAfterMandorDecision(pengiriman, false);
 
         log.info("Pengiriman {} rejected by mandor {}: {}", id, mandorId, reason);
         return pengirimanRepository.save(pengiriman);
@@ -418,7 +429,7 @@ public class PengirimanService {
     private Map<String, Object> toReadyHarvestResponse(HarvestResult harvest) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("id", harvest.getId().toString());
-        response.put("berat_kg", harvest.getKgHarvested() == null ? 0 : Math.round(harvest.getKgHarvested()));
+        response.put("berat_kg", resolveAvailableKg(harvest));
         response.put("kebun_id", harvest.getPlantationId() == null ? null : harvest.getPlantationId().toString());
         response.put("mandor_id", harvest.getMandorId() == null ? null : harvest.getMandorId().toString());
         response.put("buruh_id", harvest.getWorkerId() == null ? null : harvest.getWorkerId().toString());
@@ -426,5 +437,50 @@ public class PengirimanService {
         response.put("status", harvest.getStatus());
         response.put("berita_hasil_panen", harvest.getNotes());
         return response;
+    }
+
+    private void refreshHarvestAvailabilityAfterMandorDecision(Pengiriman pengiriman, boolean approved) {
+        List<HarvestResult> panenList = loadHarvestsForPengiriman(pengiriman);
+        if (panenList.isEmpty()) {
+            return;
+        }
+
+        for (HarvestResult panen : panenList) {
+            if (approved) {
+                panen.setReadyForDelivery(resolveAvailableKg(panen) > 0);
+            } else {
+                panen.setAvailableKg((float) resolveOriginalKg(panen));
+                panen.setReadyForDelivery(true);
+            }
+        }
+
+        harvestResultRepository.saveAll(panenList);
+    }
+
+    private List<HarvestResult> loadHarvestsForPengiriman(Pengiriman pengiriman) {
+        List<UUID> panenIds = new ArrayList<>();
+        for (String panenId : pengiriman.getPanenIds()) {
+            try {
+                panenIds.add(UUID.fromString(panenId));
+            } catch (IllegalArgumentException ex) {
+                throw new BadRequestException("Format panen_id tidak valid: " + panenId);
+            }
+        }
+
+        List<HarvestResult> harvests = new ArrayList<>();
+        harvestResultRepository.findAllById(panenIds).forEach(harvests::add);
+        return harvests;
+    }
+
+    private int resolveAvailableKg(HarvestResult harvest) {
+        Float availableKg = harvest.getAvailableKg();
+        if (availableKg != null) {
+            return Math.max(0, Math.round(availableKg));
+        }
+        return resolveOriginalKg(harvest);
+    }
+
+    private int resolveOriginalKg(HarvestResult harvest) {
+        return harvest.getKgHarvested() == null ? 0 : Math.max(0, Math.round(harvest.getKgHarvested()));
     }
 }

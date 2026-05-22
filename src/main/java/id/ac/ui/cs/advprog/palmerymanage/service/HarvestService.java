@@ -78,6 +78,7 @@ public class HarvestService {
                 .plantation(plantation)
                 .harvestDate(request.getHarvestDate())
                 .kgHarvested(request.getKgHarvested())
+                .availableKg(request.getKgHarvested())
                 .notes(request.getNotes())
                 .readyForDelivery(false)
                 .status("PENDING")
@@ -151,6 +152,7 @@ public class HarvestService {
 
         if ("APPROVED".equals(request.getStatus())) {
             harvest.setReadyForDelivery(true);
+            harvest.setAvailableKg(harvest.getKgHarvested());
             eventPublisher.publishHarvestApproved(new HarvestApprovedEvent(
                     harvest.getId(),
                     harvest.getWorkerId().toString(),
