@@ -102,6 +102,19 @@ public class PlantationController {
     }
 
     /**
+     * POST /kebun/:id/mandor/transfer
+     * Transfer Mandor dari satu Kebun ke Kebun lain — ADMIN only
+     */
+    @PostMapping("/{id}/mandor/transfer")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> transferMandor(
+            @PathVariable UUID id,
+            @Valid @RequestBody TransferPersonnelRequestDto request) {
+        plantationService.transferMandor(id, request.getToPlantationId(), request.getPersonnelId());
+        return ResponseEntity.ok().build();
+    }
+
+    /**
      * POST /kebun/:id/supir
      * Assign Supir ke Kebun — ADMIN only
      */
@@ -125,5 +138,18 @@ public class PlantationController {
             @Valid @RequestBody AssignPersonnelRequestDto request) {
         plantationService.unassignSupir(id, request.getPersonnelId());
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * POST /kebun/:id/supir/transfer
+     * Transfer Supir dari satu Kebun ke Kebun lain — ADMIN only
+     */
+    @PostMapping("/{id}/supir/transfer")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> transferSupir(
+            @PathVariable UUID id,
+            @Valid @RequestBody TransferPersonnelRequestDto request) {
+        plantationService.transferSupir(id, request.getToPlantationId(), request.getPersonnelId());
+        return ResponseEntity.ok().build();
     }
 }

@@ -224,10 +224,11 @@ class HarvestControllerTest {
     // GET /api/harvests
     @Test
     void getAllHarvestsForMandor_success_returns200() throws Exception {
-        when(harvestService.getMandorHistory(any(), any()))
+        when(harvestService.getMandorHistory(eq(mandorId), any(), any()))
                 .thenReturn(List.of(sampleHarvest));
 
         mockMvc.perform(get("/api/harvests")
+                        .header("X-User-Id", mandorId.toString())
                         .header("X-User-Role", "MANDOR"))
                 .andExpect(status().isOk());
     }
@@ -235,16 +236,18 @@ class HarvestControllerTest {
     @Test
     void getAllHarvestsForMandor_wrongRole_returns403() throws Exception {
         mockMvc.perform(get("/api/harvests")
+                        .header("X-User-Id", mandorId.toString())
                         .header("X-User-Role", "BURUH"))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     void getAllHarvestsForMandor_exception_returns400() throws Exception {
-        when(harvestService.getMandorHistory(any(), any()))
+        when(harvestService.getMandorHistory(eq(mandorId), any(), any()))
                 .thenThrow(new RuntimeException("error"));
 
         mockMvc.perform(get("/api/harvests")
+                        .header("X-User-Id", mandorId.toString())
                         .header("X-User-Role", "MANDOR"))
                 .andExpect(status().isBadRequest());
     }

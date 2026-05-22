@@ -5,25 +5,23 @@ import id.ac.ui.cs.advprog.palmerymanage.exception.BadRequestException;
 import id.ac.ui.cs.advprog.palmerymanage.exception.ForbiddenException;
 import id.ac.ui.cs.advprog.palmerymanage.exception.OverWeightException;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
+import id.ac.ui.cs.advprog.palmerymanage.model.ApprovalStatus;
+import id.ac.ui.cs.advprog.palmerymanage.model.AdminApprovalStatus;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
 import id.ac.ui.cs.advprog.palmerymanage.model.PengirimanStatus;
 import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.model.PlantationAssignment;
-import id.ac.ui.cs.advprog.palmerymanage.pengiriman.DriverDirectoryLookup;
 import id.ac.ui.cs.advprog.palmerymanage.pengiriman.DriverProfileLookup;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.PengirimanRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationAssignmentRepository;
 import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanEventPublisher;
 import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanStatusTransitionPolicy;
-import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -50,9 +48,6 @@ class PengirimanServiceTest {
     private PlantationAssignmentRepository plantationAssignmentRepository;
 
     @Mock
-    private PlantationRepository plantationRepository;
-
-    @Mock
     private PengirimanEventPublisher eventPublisher;
 
     @Mock
@@ -60,12 +55,6 @@ class PengirimanServiceTest {
 
     @Mock
     private DriverProfileLookup driverProfileLookup;
-
-    @Mock
-    private DriverDirectoryLookup driverDirectoryLookup;
-
-    @Mock
-    private Environment environment;
 
     private PengirimanService pengirimanService;
 
@@ -95,12 +84,9 @@ class PengirimanServiceTest {
                 pengirimanRepository,
                 harvestResultRepository,
                 plantationAssignmentRepository,
-                plantationRepository,
                 eventPublisher,
                 statusTransitionPolicy,
-                driverProfileLookup,
-                driverDirectoryLookup,
-                environment
+                driverProfileLookup
         );
 
         harvest1 = new HarvestResult();
@@ -182,6 +168,55 @@ class PengirimanServiceTest {
     }
 
     @Test
+    void listPanenSiapAngkutForMandor_returnsOnlyApprovedReadyHarvestsInSameKebun() {
+        Plantation otherPlantation = new Plantation();
+        otherPlantation.setId(UUID.randomUUID());
+
+        HarvestResult rejected = new HarvestResult();
+        rejected.setId(UUID.randomUUID());
+        rejected.setWorkerId(UUID.randomUUID());
+        rejected.setMandorId(mandorUuid);
+        rejected.setPlantation(harvest1.getPlantation());
+        rejected.setKgHarvested(20f);
+        rejected.setReadyForDelivery(true);
+        rejected.setStatus("REJECTED");
+
+        HarvestResult wrongKebun = new HarvestResult();
+        wrongKebun.setId(UUID.randomUUID());
+        wrongKebun.setWorkerId(UUID.randomUUID());
+        wrongKebun.setMandorId(mandorUuid);
+        wrongKebun.setPlantation(otherPlantation);
+        wrongKebun.setKgHarvested(30f);
+        wrongKebun.setReadyForDelivery(true);
+        wrongKebun.setStatus("APPROVED");
+
+        when(plantationAssignmentRepository.findByPersonnelIdAndRole(mandorUuid, PlantationAssignment.PersonnelRole.MANDOR))
+                .thenReturn(List.of(createAssignment(mandorUuid, PlantationAssignment.PersonnelRole.MANDOR)));
+        when(harvestResultRepository.findByMandorIdAndReadyForDeliveryIsTrue(mandorUuid))
+                .thenReturn(List.of(harvest1, rejected, wrongKebun));
+
+        List<Map<String, Object>> result = pengirimanService.listPanenSiapAngkutForMandor(mandorId);
+
+        assertEquals(1, result.size());
+        assertEquals(harvestId1.toString(), result.getFirst().get("id"));
+        assertEquals(Math.round(harvest1.getKgHarvested()), result.getFirst().get("berat_kg"));
+        assertEquals(kebunId.toString(), result.getFirst().get("kebun_id"));
+        assertEquals(mandorId, result.getFirst().get("mandor_id"));
+        assertEquals(harvest1.getWorkerId().toString(), result.getFirst().get("buruh_id"));
+        assertEquals(harvest1.getHarvestDate().toString(), result.getFirst().get("tanggal_panen"));
+        assertEquals("test", result.getFirst().get("berita_hasil_panen"));
+    }
+
+    @Test
+    void listPanenSiapAngkutForMandor_unassignedMandorThrowsBadRequest() {
+        when(plantationAssignmentRepository.findByPersonnelIdAndRole(
+                mandorUuid, PlantationAssignment.PersonnelRole.MANDOR)).thenReturn(List.of());
+
+        assertThrows(BadRequestException.class,
+                () -> pengirimanService.listPanenSiapAngkutForMandor(mandorId));
+    }
+
+    @Test
     void createPengiriman_success() {
         CreatePengirimanRequest request = new CreatePengirimanRequest(supirId, List.of(harvestId1.toString(), harvestId2.toString()));
 
@@ -210,6 +245,18 @@ class PengirimanServiceTest {
     void createPengiriman_blankMandorId_throwsBadRequest() {
         CreatePengirimanRequest request = new CreatePengirimanRequest(supirId, List.of(harvestId1.toString()));
         assertThrows(BadRequestException.class, () -> pengirimanService.createPengiriman("   ", request));
+    }
+
+    @Test
+    void createPengiriman_blankSupirId_throwsBadRequest() {
+        CreatePengirimanRequest request = new CreatePengirimanRequest(" ", List.of(harvestId1.toString()));
+        assertThrows(BadRequestException.class, () -> pengirimanService.createPengiriman(mandorId, request));
+    }
+
+    @Test
+    void createPengiriman_emptyPanenIds_throwsBadRequest() {
+        CreatePengirimanRequest request = new CreatePengirimanRequest(supirId, List.of());
+        assertThrows(BadRequestException.class, () -> pengirimanService.createPengiriman(mandorId, request));
     }
 
     @Test
@@ -364,7 +411,7 @@ class PengirimanServiceTest {
     }
 
     @Test
-    void updateStatusSupir_mengirimToTibaPublishesEventAndMovesToMandorReview() {
+    void updateStatusSupir_mengirimToTibaPublishesEventAndKeepsArrivalStatus() {
         pengiriman.setStatus(PengirimanStatus.MENGIRIM);
         when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
         when(statusTransitionPolicy.canTransition(PengirimanStatus.MENGIRIM, PengirimanStatus.TIBA_DI_TUJUAN))
@@ -373,7 +420,7 @@ class PengirimanServiceTest {
         Pengiriman result = pengirimanService.updateStatusSupir(
                 supirId, pengirimanId, PengirimanStatus.TIBA_DI_TUJUAN);
 
-        assertEquals(PengirimanStatus.PENDING_MANDOR_REVIEW, result.getStatus());
+        assertEquals(PengirimanStatus.TIBA_DI_TUJUAN, result.getStatus());
         verify(eventPublisher).publishPengirimanTiba(pengiriman);
     }
 
@@ -404,12 +451,13 @@ class PengirimanServiceTest {
 
     @Test
     void approveByMandor_successPublishesEvent() {
-        pengiriman.setStatus(PengirimanStatus.PENDING_MANDOR_REVIEW);
+        pengiriman.setStatus(PengirimanStatus.TIBA_DI_TUJUAN);
         when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
 
         Pengiriman result = pengirimanService.approveByMandor(mandorId, pengirimanId);
 
-        assertEquals(PengirimanStatus.PENDING_ADMIN_REVIEW, result.getStatus());
+        assertEquals(PengirimanStatus.TIBA_DI_TUJUAN, result.getStatus());
+        assertEquals(ApprovalStatus.APPROVED, result.getMandorApprovalStatus());
         verify(eventPublisher).publishPengirimanApprovedMandor(pengiriman);
     }
 
@@ -422,7 +470,7 @@ class PengirimanServiceTest {
 
     @Test
     void approveByMandor_foreignMandor_throwsForbidden() {
-        pengiriman.setStatus(PengirimanStatus.PENDING_MANDOR_REVIEW);
+        pengiriman.setStatus(PengirimanStatus.TIBA_DI_TUJUAN);
         pengiriman.setMandorId(UUID.randomUUID().toString());
         when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
 
@@ -431,12 +479,13 @@ class PengirimanServiceTest {
 
     @Test
     void rejectByMandor_successTrimsReason() {
-        pengiriman.setStatus(PengirimanStatus.PENDING_MANDOR_REVIEW);
+        pengiriman.setStatus(PengirimanStatus.TIBA_DI_TUJUAN);
         when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
 
         Pengiriman result = pengirimanService.rejectByMandor(mandorId, pengirimanId, " rusak ");
 
-        assertEquals(PengirimanStatus.REJECTED_MANDOR, result.getStatus());
+        assertEquals(PengirimanStatus.TIBA_DI_TUJUAN, result.getStatus());
+        assertEquals(ApprovalStatus.REJECTED, result.getMandorApprovalStatus());
         assertEquals("rusak", result.getRejectedReason());
     }
 
@@ -448,13 +497,11 @@ class PengirimanServiceTest {
     @Test
     void pendingAdmin_filtersByEmptySearchAndDateCombinations() {
         LocalDate date = LocalDate.of(2026, 5, 21);
-        when(pengirimanRepository.findByStatus(PengirimanStatus.PENDING_ADMIN_REVIEW)).thenReturn(List.of(pengiriman));
-        when(pengirimanRepository.findByStatusAndMandorIdContainingIgnoreCase(PengirimanStatus.PENDING_ADMIN_REVIEW, mandorId))
-                .thenReturn(List.of(pengiriman));
-        when(pengirimanRepository.findByStatusAndCreatedAtBetween(
-                eq(PengirimanStatus.PENDING_ADMIN_REVIEW), any(Instant.class), any(Instant.class))).thenReturn(List.of(pengiriman));
-        when(pengirimanRepository.findByStatusAndMandorIdContainingIgnoreCaseAndCreatedAtBetween(
-                eq(PengirimanStatus.PENDING_ADMIN_REVIEW), eq(mandorId), any(Instant.class), any(Instant.class)))
+        pengiriman.setMandorApprovalStatus(ApprovalStatus.APPROVED);
+        pengiriman.setAdminApprovalStatus(AdminApprovalStatus.PENDING);
+        pengiriman.setCreatedAt(Instant.parse("2026-05-21T03:00:00Z"));
+        when(pengirimanRepository.findByMandorApprovalStatusAndAdminApprovalStatus(
+                ApprovalStatus.APPROVED, AdminApprovalStatus.PENDING))
                 .thenReturn(List.of(pengiriman));
 
         assertEquals(1, pengirimanService.pendingAdmin(null, null).size());
@@ -471,13 +518,50 @@ class PengirimanServiceTest {
     }
 
     @Test
+    void getByIdForMandor_returnsOwnedPengiriman() {
+        when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
+
+        Pengiriman result = pengirimanService.getByIdForMandor(mandorId, pengirimanId);
+
+        assertEquals(pengirimanId, result.getId());
+    }
+
+    @Test
+    void getByIdForMandor_foreignMandorThrowsForbidden() {
+        when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
+
+        assertThrows(ForbiddenException.class,
+                () -> pengirimanService.getByIdForMandor(UUID.randomUUID().toString(), pengirimanId));
+    }
+
+    @Test
+    void getByIdForSupir_returnsOwnedPengiriman() {
+        when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
+
+        Pengiriman result = pengirimanService.getByIdForSupir(supirId, pengirimanId);
+
+        assertEquals(pengirimanId, result.getId());
+    }
+
+    @Test
+    void getByIdForSupir_foreignSupirThrowsForbidden() {
+        when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
+
+        assertThrows(ForbiddenException.class,
+                () -> pengirimanService.getByIdForSupir(UUID.randomUUID().toString(), pengirimanId));
+    }
+
+    @Test
     void approveByAdmin_successPublishesEvent() {
-        pengiriman.setStatus(PengirimanStatus.PENDING_ADMIN_REVIEW);
+        pengiriman.setStatus(PengirimanStatus.TIBA_DI_TUJUAN);
+        pengiriman.setMandorApprovalStatus(ApprovalStatus.APPROVED);
         when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
 
         Pengiriman result = pengirimanService.approveByAdmin(pengirimanId);
 
-        assertEquals(PengirimanStatus.APPROVED_ADMIN, result.getStatus());
+        assertEquals(PengirimanStatus.TIBA_DI_TUJUAN, result.getStatus());
+        assertEquals(AdminApprovalStatus.APPROVED, result.getAdminApprovalStatus());
+        assertEquals(pengiriman.getTotalKg(), result.getAcceptedKgByAdmin());
         verify(eventPublisher).publishPengirimanApprovedAdmin(pengiriman, pengiriman.getTotalKg());
     }
 
@@ -490,13 +574,16 @@ class PengirimanServiceTest {
 
     @Test
     void partialRejectByAdmin_successPublishesRecognizedKg() {
-        pengiriman.setStatus(PengirimanStatus.PENDING_ADMIN_REVIEW);
+        pengiriman.setStatus(PengirimanStatus.TIBA_DI_TUJUAN);
+        pengiriman.setMandorApprovalStatus(ApprovalStatus.APPROVED);
         when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
 
         Pengiriman result = pengirimanService.partialRejectByAdmin(pengirimanId, 80, " kurang ");
 
-        assertEquals(PengirimanStatus.PARTIAL_REJECTED_ADMIN, result.getStatus());
+        assertEquals(PengirimanStatus.TIBA_DI_TUJUAN, result.getStatus());
+        assertEquals(AdminApprovalStatus.PARTIALLY_APPROVED, result.getAdminApprovalStatus());
         assertEquals(80, result.getRecognizedKg());
+        assertEquals(80, result.getAcceptedKgByAdmin());
         assertEquals("kurang", result.getRejectedReason());
         verify(eventPublisher).publishPengirimanApprovedAdmin(pengiriman, 80);
     }
@@ -506,7 +593,8 @@ class PengirimanServiceTest {
         assertThrows(BadRequestException.class,
                 () -> pengirimanService.partialRejectByAdmin(pengirimanId, 80, " "));
 
-        pengiriman.setStatus(PengirimanStatus.PENDING_ADMIN_REVIEW);
+        pengiriman.setStatus(PengirimanStatus.TIBA_DI_TUJUAN);
+        pengiriman.setMandorApprovalStatus(ApprovalStatus.APPROVED);
         when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
         assertThrows(BadRequestException.class,
                 () -> pengirimanService.partialRejectByAdmin(pengirimanId, 0, "kurang"));
@@ -516,12 +604,14 @@ class PengirimanServiceTest {
 
     @Test
     void rejectByAdmin_successTrimsReason() {
-        pengiriman.setStatus(PengirimanStatus.PENDING_ADMIN_REVIEW);
+        pengiriman.setStatus(PengirimanStatus.TIBA_DI_TUJUAN);
+        pengiriman.setMandorApprovalStatus(ApprovalStatus.APPROVED);
         when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
 
         Pengiriman result = pengirimanService.rejectByAdmin(pengirimanId, " tidak layak ");
 
-        assertEquals(PengirimanStatus.REJECTED_ADMIN, result.getStatus());
+        assertEquals(PengirimanStatus.TIBA_DI_TUJUAN, result.getStatus());
+        assertEquals(AdminApprovalStatus.REJECTED, result.getAdminApprovalStatus());
         assertEquals("tidak layak", result.getRejectedReason());
     }
 
@@ -531,45 +621,39 @@ class PengirimanServiceTest {
     }
 
     @Test
-    void listSupirOnKebunMandor_devProfileSyncsAuthDrivers() {
-        UUID devDriverId = UUID.randomUUID();
-        when(environment.acceptsProfiles(any(Profiles.class))).thenReturn(true);
+    void listSupirOnKebunMandor_doesNotUseGlobalDriverDirectory() {
         when(plantationAssignmentRepository.findByPersonnelIdAndRole(mandorUuid, PlantationAssignment.PersonnelRole.MANDOR))
                 .thenReturn(List.of(createAssignment(mandorUuid, PlantationAssignment.PersonnelRole.MANDOR)));
         when(plantationAssignmentRepository.findByPlantationIdAndRole(kebunId, PlantationAssignment.PersonnelRole.SUPIR))
                 .thenReturn(List.of());
-        when(driverDirectoryLookup.fetchUsersByRole("DRIVER"))
-                .thenReturn(List.of(new AuthUserClient.UserSummary(devDriverId, "Dev Supir", "dev@example.test")));
-        when(plantationAssignmentRepository.findByPlantationIdAndPersonnelIdAndRole(
-                kebunId, devDriverId, PlantationAssignment.PersonnelRole.SUPIR)).thenReturn(Optional.empty());
-        when(plantationAssignmentRepository.save(any(PlantationAssignment.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(driverProfileLookup.fetchUsersByIds(List.of(devDriverId)))
-                .thenReturn(Map.of(devDriverId, new AuthUserClient.UserSummary(devDriverId, "Dev Supir", "dev@example.test")));
+        when(driverProfileLookup.fetchUsersByIds(List.of())).thenReturn(Map.of());
 
         List<Map<String, Object>> result = pengirimanService.listSupirOnKebunMandor(mandorId, "");
 
-        assertEquals(1, result.size());
-        assertEquals("Dev Supir", result.getFirst().get("nama"));
+        assertTrue(result.isEmpty());
+        verify(driverProfileLookup).fetchUsersByIds(List.of());
+        verify(plantationAssignmentRepository, never()).save(any(PlantationAssignment.class));
     }
 
     @Test
-    void createPengiriman_devProfileAutoAssignsSupir() {
-        when(environment.acceptsProfiles(any(Profiles.class))).thenReturn(true);
+    void createPengiriman_supirMustAlreadyBeAssignedToSameKebun() {
         when(plantationAssignmentRepository.findByPersonnelIdAndRole(mandorUuid, PlantationAssignment.PersonnelRole.MANDOR))
                 .thenReturn(List.of(createAssignment(mandorUuid, PlantationAssignment.PersonnelRole.MANDOR)));
         when(plantationAssignmentRepository.existsByPlantationIdAndPersonnelIdAndRole(
                 kebunId, supirUuid, PlantationAssignment.PersonnelRole.SUPIR)).thenReturn(false);
-        when(plantationAssignmentRepository.findByPlantationIdAndPersonnelIdAndRole(
-                kebunId, supirUuid, PlantationAssignment.PersonnelRole.SUPIR)).thenReturn(Optional.empty());
-        when(plantationAssignmentRepository.save(any(PlantationAssignment.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(harvestResultRepository.findAllById(anyList())).thenReturn(List.of(harvest1));
-        when(pengirimanRepository.save(any(Pengiriman.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Pengiriman result = pengirimanService.createPengiriman(
-                mandorId, new CreatePengirimanRequest(supirId, List.of(harvestId1.toString())));
+        assertThrows(BadRequestException.class, () -> pengirimanService.createPengiriman(
+                mandorId, new CreatePengirimanRequest(supirId, List.of(harvestId1.toString()))));
+        verify(plantationAssignmentRepository, never()).save(any(PlantationAssignment.class));
+    }
 
-        assertEquals(PengirimanStatus.MEMUAT, result.getStatus());
-        verify(plantationAssignmentRepository).save(any(PlantationAssignment.class));
+    @Test
+    void listSupirOnKebunMandor_unassignedMandorThrowsBadRequest() {
+        when(plantationAssignmentRepository.findByPersonnelIdAndRole(
+                mandorUuid, PlantationAssignment.PersonnelRole.MANDOR)).thenReturn(List.of());
+
+        assertThrows(BadRequestException.class, () -> pengirimanService.listSupirOnKebunMandor(mandorId, ""));
+        verify(plantationAssignmentRepository, never()).save(any(PlantationAssignment.class));
     }
 
 }

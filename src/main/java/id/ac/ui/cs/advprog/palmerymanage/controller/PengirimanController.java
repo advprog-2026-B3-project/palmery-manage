@@ -4,10 +4,10 @@ import id.ac.ui.cs.advprog.palmerymanage.dto.CreatePengirimanRequest;
 import id.ac.ui.cs.advprog.palmerymanage.dto.PartialRejectRequest;
 import id.ac.ui.cs.advprog.palmerymanage.dto.RejectRequest;
 import id.ac.ui.cs.advprog.palmerymanage.dto.UpdateStatusRequest;
-import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
+import id.ac.ui.cs.advprog.palmerymanage.exception.BadRequestException;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
 import id.ac.ui.cs.advprog.palmerymanage.model.PengirimanStatus;
-import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanResponseMapper;
 import id.ac.ui.cs.advprog.palmerymanage.service.PengirimanService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -24,7 +24,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -35,12 +34,12 @@ import java.util.UUID;
 public class PengirimanController {
 
     private final PengirimanService pengirimanService;
-    private final HarvestResultRepository harvestResultRepository;
+    private final PengirimanResponseMapper pengirimanResponseMapper;
 
     public PengirimanController(PengirimanService pengirimanService,
-                              HarvestResultRepository harvestResultRepository) {
+                                PengirimanResponseMapper pengirimanResponseMapper) {
         this.pengirimanService = pengirimanService;
-        this.harvestResultRepository = harvestResultRepository;
+        this.pengirimanResponseMapper = pengirimanResponseMapper;
     }
 
     private String resolveUserId(Authentication authentication, String headerFallback, String defaultFallback) {
@@ -51,6 +50,14 @@ public class PengirimanController {
             return headerFallback;
         }
         return defaultFallback;
+    }
+
+    private String requireUserId(Authentication authentication, String headerFallback, String label) {
+        String userId = resolveUserId(authentication, headerFallback, "");
+        if (userId.isBlank()) {
+            throw new BadRequestException(label + " tidak ditemukan");
+        }
+        return userId;
     }
 
     @GetMapping("/mandor/drivers")
@@ -69,21 +76,8 @@ public class PengirimanController {
     public ResponseEntity<List<Map<String, Object>>> panenSiapAngkut(
             @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader,
             Authentication authentication) {
-        String mandorId = resolveUserId(authentication, mandorIdHeader, "");
-        List<HarvestResult> panen = harvestResultRepository.findByReadyForDeliveryIsTrue();
-        List<Map<String, Object>> body = panen.stream()
-                .filter(h -> mandorId.isBlank()
-                        || (h.getMandorId() != null && h.getMandorId().toString().equals(mandorId)))
-                .map(h -> {
-                    Map<String, Object> m = new HashMap<>();
-                    m.put("id", h.getId().toString());
-                    m.put("berat_kg", h.getKgHarvested() == null ? 0 : Math.round(h.getKgHarvested()));
-                    m.put("kebun_id", h.getPlantationId() == null ? null : h.getPlantationId().toString());
-                    m.put("mandor_id", h.getMandorId() == null ? null : h.getMandorId().toString());
-                    m.put("status", h.getStatus());
-                    return m;
-                }).toList();
-        return ResponseEntity.ok(body);
+        String mandorId = requireUserId(authentication, mandorIdHeader, "Mandor");
+        return ResponseEntity.ok(pengirimanService.listPanenSiapAngkutForMandor(mandorId));
     }
 
     @PostMapping("/mandor/pengiriman")
@@ -91,18 +85,28 @@ public class PengirimanController {
             @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader,
             Authentication authentication,
             @Valid @RequestBody CreatePengirimanRequest request) {
-        String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
+        String mandorId = requireUserId(authentication, mandorIdHeader, "Mandor");
         Pengiriman pengiriman = pengirimanService.createPengiriman(mandorId, request);
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @GetMapping("/mandor/pengiriman/aktif")
     public ResponseEntity<List<Map<String, Object>>> pengirimanAktifMandor(
             @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader,
             Authentication authentication) {
-        String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
+        String mandorId = requireUserId(authentication, mandorIdHeader, "Mandor");
         List<Pengiriman> list = pengirimanService.pengirimanAktifMandor(mandorId);
-        return ResponseEntity.ok(list.stream().map(this::toPengirimanResponse).toList());
+        return ResponseEntity.ok(list.stream().map(pengirimanResponseMapper::toResponse).toList());
+    }
+
+    @GetMapping("/mandor/pengiriman/{id}")
+    public ResponseEntity<Map<String, Object>> detailMandor(
+            @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader,
+            Authentication authentication,
+            @PathVariable UUID id) {
+        String mandorId = requireUserId(authentication, mandorIdHeader, "Mandor");
+        Pengiriman pengiriman = pengirimanService.getByIdForMandor(mandorId, id);
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @GetMapping("/mandor/supir/{supirId}/pengiriman")
@@ -112,7 +116,7 @@ public class PengirimanController {
             @PathVariable String supirId,
             @RequestParam(value = "from", required = false) String from,
             @RequestParam(value = "to", required = false) String to) {
-        String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
+        String mandorId = requireUserId(authentication, mandorIdHeader, "Mandor");
         LocalDate fromDate = from != null && !from.isBlank()
                 ? LocalDate.parse(from)
                 : LocalDate.of(2000, 1, 1);
@@ -121,7 +125,7 @@ public class PengirimanController {
                 : LocalDate.now();
         List<Pengiriman> list = pengirimanService.pengirimanBySupirForMandor(
                 mandorId, supirId, fromDate, toDate);
-        return ResponseEntity.ok(list.stream().map(this::toPengirimanResponse).toList());
+        return ResponseEntity.ok(list.stream().map(pengirimanResponseMapper::toResponse).toList());
     }
 
     @PostMapping("/mandor/pengiriman/{id}/approve")
@@ -129,9 +133,9 @@ public class PengirimanController {
             @RequestHeader(value = "X-User-Id", required = false) String mandorIdHeader,
             Authentication authentication,
             @PathVariable UUID id) {
-        String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
+        String mandorId = requireUserId(authentication, mandorIdHeader, "Mandor");
         Pengiriman pengiriman = pengirimanService.approveByMandor(mandorId, id);
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @PostMapping("/mandor/pengiriman/{id}/reject")
@@ -140,18 +144,28 @@ public class PengirimanController {
             Authentication authentication,
             @PathVariable UUID id,
             @Valid @RequestBody RejectRequest request) {
-        String mandorId = resolveUserId(authentication, mandorIdHeader, "MDR-1");
+        String mandorId = requireUserId(authentication, mandorIdHeader, "Mandor");
         Pengiriman pengiriman = pengirimanService.rejectByMandor(mandorId, id, request.reason());
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @GetMapping("/supir/pengiriman/aktif")
     public ResponseEntity<List<Map<String, Object>>> pengirimanAktifSupir(
             @RequestHeader(value = "X-User-Id", required = false) String supirIdHeader,
             Authentication authentication) {
-        String supirId = resolveUserId(authentication, supirIdHeader, "DRV-1");
+        String supirId = requireUserId(authentication, supirIdHeader, "Supir");
         List<Pengiriman> list = pengirimanService.pengirimanAktifSupir(supirId);
-        return ResponseEntity.ok(list.stream().map(this::toPengirimanResponse).toList());
+        return ResponseEntity.ok(list.stream().map(pengirimanResponseMapper::toResponse).toList());
+    }
+
+    @GetMapping("/supir/pengiriman/{id}")
+    public ResponseEntity<Map<String, Object>> detailSupir(
+            @RequestHeader(value = "X-User-Id", required = false) String supirIdHeader,
+            Authentication authentication,
+            @PathVariable UUID id) {
+        String supirId = requireUserId(authentication, supirIdHeader, "Supir");
+        Pengiriman pengiriman = pengirimanService.getByIdForSupir(supirId, id);
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @GetMapping("/supir/pengiriman/riwayat")
@@ -160,11 +174,11 @@ public class PengirimanController {
             Authentication authentication,
             @RequestParam("from") String from,
             @RequestParam("to") String to) {
-        String supirId = resolveUserId(authentication, supirIdHeader, "DRV-1");
+        String supirId = requireUserId(authentication, supirIdHeader, "Supir");
         LocalDate fromDate = LocalDate.parse(from);
         LocalDate toDate = LocalDate.parse(to);
         List<Pengiriman> list = pengirimanService.riwayatSupir(supirId, fromDate, toDate);
-        return ResponseEntity.ok(list.stream().map(this::toPengirimanResponse).toList());
+        return ResponseEntity.ok(list.stream().map(pengirimanResponseMapper::toResponse).toList());
     }
 
     @PatchMapping("/supir/pengiriman/{id}/status")
@@ -173,10 +187,10 @@ public class PengirimanController {
             Authentication authentication,
             @PathVariable UUID id,
             @Valid @RequestBody UpdateStatusRequest request) {
-        String supirId = resolveUserId(authentication, supirIdHeader, "DRV-1");
+        String supirId = requireUserId(authentication, supirIdHeader, "Supir");
         PengirimanStatus target = PengirimanStatus.valueOf(request.status());
         Pengiriman pengiriman = pengirimanService.updateStatusSupir(supirId, id, target);
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @GetMapping("/admin/pengiriman/pending")
@@ -185,19 +199,19 @@ public class PengirimanController {
             @RequestParam(value = "date", required = false) String date) {
         LocalDate parsedDate = date != null && !date.isBlank() ? LocalDate.parse(date) : null;
         List<Pengiriman> list = pengirimanService.pendingAdmin(mandorSearch, parsedDate);
-        return ResponseEntity.ok(list.stream().map(this::toPengirimanResponse).toList());
+        return ResponseEntity.ok(list.stream().map(pengirimanResponseMapper::toResponse).toList());
     }
 
     @GetMapping("/admin/pengiriman/{id}")
     public ResponseEntity<Map<String, Object>> detailAdmin(@PathVariable UUID id) {
         Pengiriman pengiriman = pengirimanService.getById(id);
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @PostMapping("/admin/pengiriman/{id}/approve")
     public ResponseEntity<Map<String, Object>> approveAdmin(@PathVariable UUID id) {
         Pengiriman pengiriman = pengirimanService.approveByAdmin(id);
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @PostMapping("/admin/pengiriman/{id}/partial-reject")
@@ -206,7 +220,7 @@ public class PengirimanController {
             @Valid @RequestBody PartialRejectRequest request) {
         Pengiriman pengiriman = pengirimanService.partialRejectByAdmin(
                 id, request.recognizedKg(), request.reason());
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 
     @PostMapping("/admin/pengiriman/{id}/reject")
@@ -214,25 +228,6 @@ public class PengirimanController {
             @PathVariable UUID id,
             @Valid @RequestBody RejectRequest request) {
         Pengiriman pengiriman = pengirimanService.rejectByAdmin(id, request.reason());
-        return ResponseEntity.ok(toPengirimanResponse(pengiriman));
-    }
-
-    private Map<String, Object> toPengirimanResponse(Pengiriman pengiriman) {
-        Map<String, Object> map = new HashMap<>();
-        map.put("id", pengiriman.getId());
-        map.put("supir_id", pengiriman.getSupirId());
-        map.put("mandor_id", pengiriman.getMandorId());
-        map.put("kebun_id", pengiriman.getKebunId());
-        map.put("total_kg", pengiriman.getTotalKg());
-        map.put("status", pengiriman.getStatus().name());
-        map.put("mandor_approval_status", pengiriman.getMandorApprovalStatus().name());
-        map.put("admin_approval_status", pengiriman.getAdminApprovalStatus().name());
-        map.put("panen_ids", pengiriman.getPanenIds());
-        map.put("rejected_reason", pengiriman.getRejectedReason());
-        map.put("recognized_kg", pengiriman.getRecognizedKg());
-        map.put("accepted_kg_by_admin", pengiriman.getAcceptedKgByAdmin());
-        map.put("created_at", pengiriman.getCreatedAt());
-        map.put("updated_at", pengiriman.getUpdatedAt());
-        return map;
+        return ResponseEntity.ok(pengirimanResponseMapper.toResponse(pengiriman));
     }
 }

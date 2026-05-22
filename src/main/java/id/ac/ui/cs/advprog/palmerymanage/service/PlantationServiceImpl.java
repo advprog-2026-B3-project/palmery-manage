@@ -97,6 +97,7 @@ public class PlantationServiceImpl implements PlantationService {
                 plantationId, mandorId, PersonnelRole.MANDOR)) {
             throw new BadRequestException("Mandor sudah ditugaskan ke kebun ini");
         }
+        ensurePersonnelNotAssignedElsewhere(mandorId, PersonnelRole.MANDOR, "Mandor");
 
         PlantationAssignment assignment = PlantationAssignment.builder()
                 .plantationId(plantationId)
@@ -122,6 +123,12 @@ public class PlantationServiceImpl implements PlantationService {
 
     @Override
     @Transactional
+    public void transferMandor(UUID fromPlantationId, UUID toPlantationId, UUID mandorId) {
+        transferPersonnel(fromPlantationId, toPlantationId, mandorId, PersonnelRole.MANDOR, "Mandor");
+    }
+
+    @Override
+    @Transactional
     public void assignSupir(UUID plantationId, UUID supirId) {
         findPlantationOrThrow(plantationId);
 
@@ -129,6 +136,7 @@ public class PlantationServiceImpl implements PlantationService {
                 plantationId, supirId, PersonnelRole.SUPIR)) {
             throw new BadRequestException("Supir sudah ditugaskan ke kebun ini");
         }
+        ensurePersonnelNotAssignedElsewhere(supirId, PersonnelRole.SUPIR, "Supir");
 
         PlantationAssignment assignment = PlantationAssignment.builder()
                 .plantationId(plantationId)
@@ -150,6 +158,12 @@ public class PlantationServiceImpl implements PlantationService {
 
         assignmentRepository.delete(assignment);
         log.info("Supir {} unassigned from plantation {}", supirId, plantationId);
+    }
+
+    @Override
+    @Transactional
+    public void transferSupir(UUID fromPlantationId, UUID toPlantationId, UUID supirId) {
+        transferPersonnel(fromPlantationId, toPlantationId, supirId, PersonnelRole.SUPIR, "Supir");
     }
 
     // --- Private helpers ---
@@ -177,6 +191,38 @@ public class PlantationServiceImpl implements PlantationService {
         if (hasActiveMandor || hasActiveSupir) {
             throw new PlantationHasActivePersonnelException(plantation.getId());
         }
+    }
+
+    private void ensurePersonnelNotAssignedElsewhere(UUID personnelId, PersonnelRole role, String label) {
+        if (!assignmentRepository.findByPersonnelIdAndRole(personnelId, role).isEmpty()) {
+            throw new BadRequestException(label + " sudah ditugaskan ke kebun lain; gunakan transfer");
+        }
+    }
+
+    private void transferPersonnel(UUID fromPlantationId, UUID toPlantationId, UUID personnelId,
+                                   PersonnelRole role, String label) {
+        findPlantationOrThrow(fromPlantationId);
+        findPlantationOrThrow(toPlantationId);
+
+        if (fromPlantationId.equals(toPlantationId)) {
+            throw new BadRequestException("Kebun asal dan tujuan tidak boleh sama");
+        }
+
+        PlantationAssignment currentAssignment = assignmentRepository
+                .findByPlantationIdAndPersonnelIdAndRole(fromPlantationId, personnelId, role)
+                .orElseThrow(() -> new BadRequestException(label + " tidak ditemukan di kebun asal"));
+
+        if (assignmentRepository.existsByPlantationIdAndPersonnelIdAndRole(toPlantationId, personnelId, role)) {
+            throw new BadRequestException(label + " sudah ditugaskan ke kebun tujuan");
+        }
+
+        assignmentRepository.delete(currentAssignment);
+        assignmentRepository.save(PlantationAssignment.builder()
+                .plantationId(toPlantationId)
+                .personnelId(personnelId)
+                .role(role)
+                .build());
+        log.info("{} {} transferred from plantation {} to {}", label, personnelId, fromPlantationId, toPlantationId);
     }
 
     private void enrichWithAssignments(PlantationResponseDto response, UUID plantationId) {

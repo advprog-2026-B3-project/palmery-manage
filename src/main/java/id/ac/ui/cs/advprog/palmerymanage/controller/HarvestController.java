@@ -111,6 +111,7 @@ public class HarvestController {
     // 4. Endpoint Daftar Panen untuk Mandor (Bisa filter tanggal & workerId)
     @GetMapping
     public ResponseEntity<?> getAllHarvestsForMandor(
+            @RequestHeader(value = "X-User-Id", required = true) UUID mandorId,
             @RequestHeader(value = "X-User-Role", required = true) String role,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(required = false) UUID workerId) {
@@ -118,7 +119,7 @@ public class HarvestController {
             if (!"MANDOR".equalsIgnoreCase(role)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Akses ditolak: Hanya Mandor yang bisa melihat semua data panen.");
             }
-            List<HarvestResult> harvests = harvestService.getMandorHistory(date, workerId);
+            List<HarvestResult> harvests = harvestService.getMandorHistory(mandorId, date, workerId);
             return ResponseEntity.ok(harvests.stream().map(this::mapToResponseDto).collect(Collectors.toList()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
