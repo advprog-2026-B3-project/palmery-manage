@@ -104,8 +104,8 @@ class HarvestResultTest {
         Plantation plantation = Plantation.builder().id(UUID.randomUUID()).build();
         HarvestResult harvest = new HarvestResult(
                 id, UUID.randomUUID(), UUID.randomUUID(), plantation,
-                LocalDate.now(), 100f, "Notes", false, "PENDING", null,
-                null, LocalDateTime.now(), new ArrayList<>()
+            LocalDate.now(), 100f, 100f, "Notes", false, "PENDING", null,
+            null, LocalDateTime.now(), new ArrayList<>()
         );
         assertEquals(id, harvest.getId());
     }

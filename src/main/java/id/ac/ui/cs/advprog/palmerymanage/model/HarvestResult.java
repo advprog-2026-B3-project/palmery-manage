@@ -41,6 +41,9 @@ public class HarvestResult {
     @Column(name = "kg_harvested", nullable = false)
     private Float kgHarvested;
 
+    @Column(name = "available_kg")
+    private Float availableKg;
+
     @Column(columnDefinition = "TEXT", nullable = false)
     private String notes;
 

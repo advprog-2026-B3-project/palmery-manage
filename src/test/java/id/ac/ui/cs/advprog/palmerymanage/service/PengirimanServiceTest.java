@@ -98,6 +98,7 @@ class PengirimanServiceTest {
         harvest1.setPlantation(p1);
         harvest1.setHarvestDate(LocalDate.now());
         harvest1.setKgHarvested(100f);
+        harvest1.setAvailableKg(100f);
         harvest1.setNotes("test");
         harvest1.setReadyForDelivery(true);
         harvest1.setStatus("APPROVED");
@@ -111,6 +112,7 @@ class PengirimanServiceTest {
         harvest2.setPlantation(p2);
         harvest2.setHarvestDate(LocalDate.now());
         harvest2.setKgHarvested(50f);
+        harvest2.setAvailableKg(50f);
         harvest2.setNotes("test");
         harvest2.setReadyForDelivery(true);
         harvest2.setStatus("APPROVED");
@@ -296,15 +298,39 @@ class PengirimanServiceTest {
     }
 
     @Test
-    void createPengiriman_overWeight_throwsOverWeightException() {
+    void createPengiriman_singleLargeHarvest_partiallyReservesFourHundredKg() {
         when(plantationAssignmentRepository.findByPersonnelIdAndRole(mandorUuid, PlantationAssignment.PersonnelRole.MANDOR))
                 .thenReturn(List.of(createAssignment(mandorUuid, PlantationAssignment.PersonnelRole.MANDOR)));
         when(plantationAssignmentRepository.existsByPlantationIdAndPersonnelIdAndRole(kebunId, supirUuid, PlantationAssignment.PersonnelRole.SUPIR))
                 .thenReturn(true);
 
-        harvest1.setKgHarvested(401f);
+        harvest1.setKgHarvested(5000f);
+        harvest1.setAvailableKg(5000f);
         CreatePengirimanRequest request = new CreatePengirimanRequest(supirId, List.of(harvestId1.toString()));
         when(harvestResultRepository.findAllById(anyList())).thenReturn(List.of(harvest1));
+
+        Pengiriman result = pengirimanService.createPengiriman(mandorId, request);
+
+        assertEquals(400, result.getTotalKg());
+        assertEquals(4600f, harvest1.getAvailableKg());
+        assertFalse(harvest1.getReadyForDelivery());
+        verify(harvestResultRepository).saveAll(anyList());
+    }
+
+    @Test
+    void createPengiriman_multipleHarvestsOverLimit_throwsOverWeightException() {
+        when(plantationAssignmentRepository.findByPersonnelIdAndRole(mandorUuid, PlantationAssignment.PersonnelRole.MANDOR))
+                .thenReturn(List.of(createAssignment(mandorUuid, PlantationAssignment.PersonnelRole.MANDOR)));
+        when(plantationAssignmentRepository.existsByPlantationIdAndPersonnelIdAndRole(kebunId, supirUuid, PlantationAssignment.PersonnelRole.SUPIR))
+                .thenReturn(true);
+
+        harvest1.setKgHarvested(300f);
+        harvest1.setAvailableKg(300f);
+        harvest2.setKgHarvested(200f);
+        harvest2.setAvailableKg(200f);
+        CreatePengirimanRequest request = new CreatePengirimanRequest(supirId, List.of(harvestId1.toString(), harvestId2.toString()));
+        when(harvestResultRepository.findAllById(anyList())).thenReturn(List.of(harvest1, harvest2));
+
         assertThrows(OverWeightException.class, () -> pengirimanService.createPengiriman(mandorId, request));
     }
 
@@ -453,6 +479,7 @@ class PengirimanServiceTest {
     void approveByMandor_successPublishesEvent() {
         pengiriman.setStatus(PengirimanStatus.TIBA_DI_TUJUAN);
         when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
+                when(harvestResultRepository.findAllById(anyList())).thenReturn(List.of(harvest1, harvest2));
 
         Pengiriman result = pengirimanService.approveByMandor(mandorId, pengirimanId);
 
@@ -481,12 +508,17 @@ class PengirimanServiceTest {
     void rejectByMandor_successTrimsReason() {
         pengiriman.setStatus(PengirimanStatus.TIBA_DI_TUJUAN);
         when(pengirimanRepository.findById(pengirimanId)).thenReturn(Optional.of(pengiriman));
+                when(harvestResultRepository.findAllById(anyList())).thenReturn(List.of(harvest1, harvest2));
 
         Pengiriman result = pengirimanService.rejectByMandor(mandorId, pengirimanId, " rusak ");
 
         assertEquals(PengirimanStatus.TIBA_DI_TUJUAN, result.getStatus());
         assertEquals(ApprovalStatus.REJECTED, result.getMandorApprovalStatus());
         assertEquals("rusak", result.getRejectedReason());
+                assertEquals(100f, harvest1.getAvailableKg());
+                assertEquals(50f, harvest2.getAvailableKg());
+                assertTrue(harvest1.getReadyForDelivery());
+                assertTrue(harvest2.getReadyForDelivery());
     }
 
     @Test
