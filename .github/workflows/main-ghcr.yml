@@ -44,3 +44,13 @@ jobs:
           tags: |
             ghcr.io/${{ steps.owner.outputs.value }}/palmery-manage-backend:main
             ghcr.io/${{ steps.owner.outputs.value }}/palmery-manage-backend:main-${{ github.sha }}
+
+      - name: Trigger infra deploy
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.INFRA_REPO_DISPATCH_TOKEN }}
+          repository: advprog-2026-B3-project/palmery-infra
+          event-type: deploy-main
+          client-payload: >-
+            {"source_repository":"${{ github.repository }}","source_sha":"${{ github.sha }}"}
