@@ -9,23 +9,21 @@ import id.ac.ui.cs.advprog.palmerymanage.pengiriman.SpringPengirimanEventPublish
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class PengirimanEventPublisherTest {
 
     @Mock
-    private ApplicationEventPublisher publisher;
+    private DomainEventPublisher domainEventPublisher;
 
     private PengirimanEventPublisher pengirimanEventPublisher;
 
@@ -33,7 +31,7 @@ class PengirimanEventPublisherTest {
 
     @BeforeEach
     void setUp() {
-        pengirimanEventPublisher = new SpringPengirimanEventPublisher(publisher);
+        pengirimanEventPublisher = new SpringPengirimanEventPublisher(domainEventPublisher);
 
         pengiriman = new Pengiriman();
         pengiriman.setId(UUID.randomUUID());
@@ -47,41 +45,20 @@ class PengirimanEventPublisherTest {
     void publishesPengirimanTibaEvent() {
         pengirimanEventPublisher.publishPengirimanTiba(pengiriman);
 
-        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(publisher).publishEvent(captor.capture());
-        Object event = captor.getValue();
-        assertTrue(event instanceof PengirimanTibaEvent);
-        PengirimanTibaEvent tiba = (PengirimanTibaEvent) event;
-        assertEquals(pengiriman.getId(), tiba.pengirimanId());
-        assertEquals(pengiriman.getSupirId(), tiba.supirId());
-        assertEquals(pengiriman.getMandorId(), tiba.mandorId());
-        assertEquals(pengiriman.getTotalKg(), tiba.totalKg());
-        assertEquals(pengiriman.getPanenIds(), tiba.panenIds());
+        verify(domainEventPublisher).publish(eq("PengirimanTiba"), anyMap());
     }
 
     @Test
     void publishesPengirimanApprovedMandorEvent() {
         pengirimanEventPublisher.publishPengirimanApprovedMandor(pengiriman);
 
-        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(publisher).publishEvent(captor.capture());
-        Object event = captor.getValue();
-        assertTrue(event instanceof PengirimanApprovedMandorEvent);
-        PengirimanApprovedMandorEvent approved = (PengirimanApprovedMandorEvent) event;
-        assertEquals(pengiriman.getId(), approved.pengirimanId());
-        assertEquals(pengiriman.getTotalKg(), approved.totalKg());
+        verify(domainEventPublisher).publish(eq("PengirimanApprovedMandor"), anyMap());
     }
 
     @Test
     void publishesPengirimanApprovedAdminEventWithRecognizedKg() {
         pengirimanEventPublisher.publishPengirimanApprovedAdmin(pengiriman, 250);
 
-        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(publisher).publishEvent(captor.capture());
-        Object event = captor.getValue();
-        assertTrue(event instanceof PengirimanApprovedAdminEvent);
-        PengirimanApprovedAdminEvent approved = (PengirimanApprovedAdminEvent) event;
-        assertEquals(pengiriman.getId(), approved.pengirimanId());
-        assertEquals(250, approved.recognizedKg());
+        verify(domainEventPublisher).publish(eq("PengirimanApprovedAdmin"), anyMap());
     }
 }

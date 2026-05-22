@@ -3,32 +3,31 @@ package id.ac.ui.cs.advprog.palmerymanage.event;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class HarvestEventPublisherTest {
 
     @Mock
-    private RabbitTemplate rabbitTemplate;
+    private id.ac.ui.cs.advprog.palmerymanage.service.DomainEventPublisher domainEventPublisher;
 
     @InjectMocks
     private HarvestEventPublisher harvestEventPublisher;
 
     @BeforeEach
-    void setUp() {
-        ReflectionTestUtils.setField(harvestEventPublisher, "exchange", "harvest_exchange");
-        ReflectionTestUtils.setField(harvestEventPublisher, "routingKeyApproved", "harvest_approved_routing_key");
-        ReflectionTestUtils.setField(harvestEventPublisher, "routingKeySubmitted", "harvest_submitted_routing_key");
-    }
+    void setUp() {}
 
     @Test
     void testPublishHarvestApproved() {
@@ -39,7 +38,12 @@ class HarvestEventPublisherTest {
 
         harvestEventPublisher.publishHarvestApproved(event);
 
-        verify(rabbitTemplate, times(1)).convertAndSend("harvest_exchange", "harvest_approved_routing_key", event);
+        ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(domainEventPublisher, times(1)).publish(eq("PanenApproved"), payloadCaptor.capture());
+        Map<String, Object> payload = payloadCaptor.getValue();
+        org.junit.jupiter.api.Assertions.assertEquals(harvestId.toString(), payload.get("harvestId"));
+        org.junit.jupiter.api.Assertions.assertEquals("worker-1", payload.get("userId"));
+        org.junit.jupiter.api.Assertions.assertEquals(50.0f, payload.get("kgHarvested"));
     }
 
     @Test
@@ -51,6 +55,11 @@ class HarvestEventPublisherTest {
 
         harvestEventPublisher.publishHarvestSubmitted(event);
 
-        verify(rabbitTemplate, times(1)).convertAndSend("harvest_exchange", "harvest_submitted_routing_key", event);
+        ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(domainEventPublisher, times(1)).publish(eq("PanenSubmitted"), payloadCaptor.capture());
+        Map<String, Object> payload = payloadCaptor.getValue();
+        org.junit.jupiter.api.Assertions.assertEquals(harvestId.toString(), payload.get("harvestId"));
+        org.junit.jupiter.api.Assertions.assertEquals("worker-1", payload.get("userId"));
+        org.junit.jupiter.api.Assertions.assertEquals(50.0f, payload.get("kgHarvested"));
     }
 }
