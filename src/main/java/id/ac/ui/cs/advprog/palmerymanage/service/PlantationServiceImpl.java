@@ -152,6 +152,52 @@ public class PlantationServiceImpl implements PlantationService {
         log.info("Supir {} unassigned from plantation {}", supirId, plantationId);
     }
 
+    @Override
+    @Transactional
+    public void transferMandor(UUID fromPlantationId, UUID toPlantationId, UUID mandorId) {
+        if (fromPlantationId.equals(toPlantationId)) {
+            throw new BadRequestException("Kebun asal dan tujuan tidak boleh sama");
+        }
+        findPlantationOrThrow(fromPlantationId);
+        findPlantationOrThrow(toPlantationId);
+
+        PlantationAssignment current = assignmentRepository
+                .findByPlantationIdAndPersonnelIdAndRole(fromPlantationId, mandorId, PersonnelRole.MANDOR)
+                .orElseThrow(() -> new BadRequestException("Mandor tidak ditugaskan di kebun asal"));
+
+        if (assignmentRepository.existsByPlantationIdAndPersonnelIdAndRole(
+                toPlantationId, mandorId, PersonnelRole.MANDOR)) {
+            throw new BadRequestException("Mandor sudah ditugaskan di kebun tujuan");
+        }
+
+        current.setPlantationId(toPlantationId);
+        assignmentRepository.save(current);
+        log.info("Mandor {} transferred from plantation {} to {}", mandorId, fromPlantationId, toPlantationId);
+    }
+
+    @Override
+    @Transactional
+    public void transferSupir(UUID fromPlantationId, UUID toPlantationId, UUID supirId) {
+        if (fromPlantationId.equals(toPlantationId)) {
+            throw new BadRequestException("Kebun asal dan tujuan tidak boleh sama");
+        }
+        findPlantationOrThrow(fromPlantationId);
+        findPlantationOrThrow(toPlantationId);
+
+        PlantationAssignment current = assignmentRepository
+                .findByPlantationIdAndPersonnelIdAndRole(fromPlantationId, supirId, PersonnelRole.SUPIR)
+                .orElseThrow(() -> new BadRequestException("Supir tidak ditugaskan di kebun asal"));
+
+        if (assignmentRepository.existsByPlantationIdAndPersonnelIdAndRole(
+                toPlantationId, supirId, PersonnelRole.SUPIR)) {
+            throw new BadRequestException("Supir sudah ditugaskan di kebun tujuan");
+        }
+
+        current.setPlantationId(toPlantationId);
+        assignmentRepository.save(current);
+        log.info("Supir {} transferred from plantation {} to {}", supirId, fromPlantationId, toPlantationId);
+    }
+
     // --- Private helpers ---
 
     private Plantation findPlantationOrThrow(UUID id) {
