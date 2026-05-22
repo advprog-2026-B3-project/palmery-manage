@@ -41,6 +41,9 @@ class HarvestServiceTest {
     private HarvestEventPublisher eventPublisher;
 
     @Mock
+    private WorkerAssignmentService workerAssignmentService;
+
+    @Mock
     private id.ac.ui.cs.advprog.palmerymanage.service.validation.HarvestValidator validator;
 
     private HarvestService harvestService;
@@ -54,7 +57,7 @@ class HarvestServiceTest {
 
     @BeforeEach
     void setUp() {
-        harvestService = new HarvestService(harvestResultRepository, plantationService, plantationValidationService, eventPublisher, List.of(validator));
+        harvestService = new HarvestService(harvestResultRepository, plantationService, plantationValidationService, eventPublisher, workerAssignmentService, List.of(validator));
         org.springframework.test.util.ReflectionTestUtils.setField(harvestService, "useDummyAssignment", true);
         workerId = UUID.randomUUID();
         mandorId = UUID.randomUUID();

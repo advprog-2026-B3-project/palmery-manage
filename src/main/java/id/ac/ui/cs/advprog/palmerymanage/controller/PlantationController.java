@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
-
 @RestController
 @RequestMapping("/kebun")
 @RequiredArgsConstructor
@@ -125,5 +124,23 @@ public class PlantationController {
             @Valid @RequestBody AssignPersonnelRequestDto request) {
         plantationService.unassignSupir(id, request.getPersonnelId());
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/mandor/transfer")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> transferMandor(
+            @PathVariable UUID id,
+            @Valid @RequestBody TransferPersonnelRequestDto request) {
+        plantationService.transferMandor(id, request.getToPlantationId(), request.getPersonnelId());
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{id}/supir/transfer")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> transferSupir(
+            @PathVariable UUID id,
+            @Valid @RequestBody TransferPersonnelRequestDto request) {
+        plantationService.transferSupir(id, request.getToPlantationId(), request.getPersonnelId());
+        return ResponseEntity.ok().build();
     }
 }

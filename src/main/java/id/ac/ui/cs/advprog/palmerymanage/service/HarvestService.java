@@ -37,13 +37,14 @@ public class HarvestService {
     private final PlantationService plantationService;
     private final PlantationValidationService plantationValidationService;
     private final HarvestEventPublisher eventPublisher;
+    private final WorkerAssignmentService workerAssignmentService;
     private final RestClient restClient;
     private final List<HarvestValidator> validators;
 
     @Value("${assignment.api.url:}")
     private String assignmentApiUrl;
 
-    @Value("${assignment.api.dummy:true}")
+    @Value("${assignment.api.dummy:false}")
     private boolean useDummyAssignment;
 
     @Autowired
@@ -51,20 +52,26 @@ public class HarvestService {
                           PlantationService plantationService,
                           PlantationValidationService plantationValidationService,
                           HarvestEventPublisher eventPublisher,
+                          WorkerAssignmentService workerAssignmentService,
                           List<HarvestValidator> validators) {
         this.harvestResultRepository = harvestResultRepository;
         this.plantationService = plantationService;
         this.plantationValidationService = plantationValidationService;
         this.eventPublisher = eventPublisher;
+        this.workerAssignmentService = workerAssignmentService;
         this.validators = validators;
         this.restClient = RestClient.create();
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public HarvestResult submitHarvest(UUID workerId, HarvestRequestDto request) {
-        // Eksekusi semua validasi secara dinamis (Strategy Pattern)
         for (HarvestValidator validator : validators) {
             validator.validate(workerId, request);
+        }
+
+        if (!useDummyAssignment && !workerAssignmentService.isWorkerUnderMandor(request.getMandorId(), workerId)) {
+            throw new IllegalArgumentException(
+                    "Buruh ini tidak ditugaskan kepada Mandor tersebut. Hubungi Admin untuk pengaturan penempatan.");
         }
 
         Plantation plantation = new Plantation();
@@ -111,8 +118,15 @@ public class HarvestService {
             return true;
         }
 
+        if (workerAssignmentService.isWorkerUnderMandor(mandorId, workerId)) {
+            return true;
+        }
+
+        if (assignmentApiUrl == null || assignmentApiUrl.isBlank()) {
+            return false;
+        }
+
         try {
-            logger.info("Checking assignment API: {}", assignmentApiUrl);
             Boolean isAnakBuah = restClient.get()
                     .uri(assignmentApiUrl + "/check?mandorId={mandorId}&workerId={workerId}", mandorId, workerId)
                     .retrieve()
