@@ -4,6 +4,8 @@ import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedAdminEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedMandorEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanTibaEvent;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanEventPublisher;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.SpringPengirimanEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,7 +33,7 @@ class PengirimanEventPublisherTest {
 
     @BeforeEach
     void setUp() {
-        pengirimanEventPublisher = new PengirimanEventPublisher(publisher);
+        pengirimanEventPublisher = new SpringPengirimanEventPublisher(publisher);
 
         pengiriman = new Pengiriman();
         pengiriman.setId(UUID.randomUUID());

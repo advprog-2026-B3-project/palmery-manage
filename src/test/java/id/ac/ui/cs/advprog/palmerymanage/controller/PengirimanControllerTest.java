@@ -1,5 +1,6 @@
 package id.ac.ui.cs.advprog.palmerymanage.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import id.ac.ui.cs.advprog.palmerymanage.dto.CreatePengirimanRequest;
 import id.ac.ui.cs.advprog.palmerymanage.dto.PartialRejectRequest;
 import id.ac.ui.cs.advprog.palmerymanage.dto.RejectRequest;
@@ -8,6 +9,7 @@ import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
 import id.ac.ui.cs.advprog.palmerymanage.model.PengirimanStatus;
 import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanResponseMapper;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
 import id.ac.ui.cs.advprog.palmerymanage.service.PengirimanService;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,244 +18,327 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @ExtendWith(MockitoExtension.class)
 class PengirimanControllerTest {
 
-    @Mock
-    private PengirimanService pengirimanService;
+	private MockMvc mockMvc;
+	private ObjectMapper objectMapper;
 
-    @Mock
-    private HarvestResultRepository harvestResultRepository;
+	@Mock
+	private PengirimanService pengirimanService;
 
-    @InjectMocks
-    private PengirimanController pengirimanController;
+	@Mock
+	private HarvestResultRepository harvestResultRepository;
 
-    private Authentication authentication;
-    private Pengiriman pengiriman;
+	@Mock
+	private PengirimanResponseMapper pengirimanResponseMapper;
 
-    @BeforeEach
-    void setUp() {
-        authentication = mock(Authentication.class);
-        pengiriman = new Pengiriman();
-        pengiriman.setId(UUID.randomUUID());
-        pengiriman.setSupirId("DRV-1");
-        pengiriman.setMandorId("MDR-1");
-        pengiriman.setKebunId(UUID.randomUUID().toString());
-        pengiriman.setTotalKg(100);
-        pengiriman.setStatus(PengirimanStatus.MEMUAT);
-        pengiriman.setPanenIds(List.of("panen-1"));
-        pengiriman.setCreatedAt(Instant.now());
-        pengiriman.setUpdatedAt(Instant.now());
-    }
+	@InjectMocks
+	private PengirimanController pengirimanController;
 
-    @Test
-    void driversForMandor() {
-        when(authentication.getName()).thenReturn("MDR-1");
-        when(pengirimanService.listSupirOnKebunMandor("MDR-1", "")).thenReturn(List.of());
-        ResponseEntity<List<Map<String, Object>>> response = pengirimanController.driversForMandor("MDR-1", authentication, "");
-        assertEquals(200, response.getStatusCode().value());
-        assertTrue(response.getBody().isEmpty());
-    }
+	private UUID mandorId;
+	private UUID supirId;
+	private UUID panenId;
+	private Pengiriman samplePengiriman;
 
-    @Test
-    void driversForMandor_blankId() {
-        ResponseEntity<List<Map<String, Object>>> response = pengirimanController.driversForMandor("", null, "");
-        assertEquals(200, response.getStatusCode().value());
-        assertTrue(response.getBody().isEmpty());
-    }
+	@BeforeEach
+	void setUp() {
+		mockMvc = MockMvcBuilders.standaloneSetup(pengirimanController).build();
+		objectMapper = new ObjectMapper();
 
-    @Test
-    void panenSiapAngkut_withAuthName() {
-        when(authentication.getName()).thenReturn("MDR-1");
+		mandorId = UUID.randomUUID();
+		supirId = UUID.randomUUID();
+		panenId = UUID.randomUUID();
 
-        HarvestResult h1 = new HarvestResult();
-        h1.setId(UUID.randomUUID());
-        h1.setMandorId(UUID.fromString("00000000-0000-0000-0000-000000000001")); // different mandor
-        Plantation p = new Plantation();
-        p.setId(UUID.randomUUID());
-        h1.setPlantation(p);
-        h1.setKgHarvested(100f);
-        h1.setStatus("APPROVED");
+		samplePengiriman = new Pengiriman();
+		samplePengiriman.setId(UUID.randomUUID());
+		samplePengiriman.setSupirId(supirId.toString());
+		samplePengiriman.setMandorId(mandorId.toString());
+		samplePengiriman.setTotalKg(150);
+		samplePengiriman.setStatus(PengirimanStatus.MEMUAT);
+	}
 
-        HarvestResult h2 = new HarvestResult();
-        h2.setId(UUID.randomUUID());
-        h2.setStatus("APPROVED");
+	@Test
+	void driversForMandor_blankMandor_returnsEmpty() throws Exception {
+		mockMvc.perform(get("/api/mandor/drivers"))
+				.andExpect(status().isOk())
+				.andExpect(content().json("[]"));
+	}
 
-        when(harvestResultRepository.findByReadyForDeliveryIsTrue()).thenReturn(List.of(h1, h2));
+	@Test
+	void panenSiapAngkut_filtersByMandorHeader() throws Exception {
+		HarvestResult h = new HarvestResult();
+		h.setId(panenId);
+		h.setMandorId(mandorId);
+		h.setPlantation(Plantation.builder().id(UUID.randomUUID()).build());
+		h.setKgHarvested(123f);
+		h.setReadyForDelivery(true);
 
-        ResponseEntity<List<Map<String, Object>>> response = pengirimanController.panenSiapAngkut(null, authentication);
-        assertEquals(200, response.getStatusCode().value());
-        assertTrue(response.getBody().isEmpty()); // both filtered out
-    }
+		when(harvestResultRepository.findByReadyForDeliveryIsTrue()).thenReturn(List.of(h));
 
-    @Test
-    void panenSiapAngkut_withHeaderFallback_andBlankMandor() {
-        HarvestResult h1 = new HarvestResult();
-        h1.setId(UUID.randomUUID());
-        Plantation p = new Plantation();
-        p.setId(UUID.randomUUID());
-        h1.setPlantation(p);
-        h1.setKgHarvested(100f);
-        h1.setStatus("APPROVED");
+		mockMvc.perform(get("/api/mandor/panen/siap-angkut").header("X-User-Id", mandorId.toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].mandor_id").value(mandorId.toString()));
+	}
 
-        when(harvestResultRepository.findByReadyForDeliveryIsTrue()).thenReturn(List.of(h1));
+	@Test
+	void createPengiriman_success_returns200() throws Exception {
+		CreatePengirimanRequest req = new CreatePengirimanRequest(supirId.toString(), List.of(panenId.toString()));
+		when(pengirimanService.createPengiriman(eq(mandorId.toString()), any())).thenReturn(samplePengiriman);
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("id", samplePengiriman.getId().toString()));
 
-        ResponseEntity<List<Map<String, Object>>> response = pengirimanController.panenSiapAngkut("   ", null);
-        assertEquals(200, response.getStatusCode().value());
-        assertEquals(1, response.getBody().size());
-        assertNotNull(response.getBody().get(0).get("kebun_id"));
-        assertNull(response.getBody().get(0).get("mandor_id"));
-    }
+		mockMvc.perform(post("/api/mandor/pengiriman")
+						.header("X-User-Id", mandorId.toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(req)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(samplePengiriman.getId().toString()));
+	}
 
-    @Test
-    void createPengiriman() {
-        when(authentication.getName()).thenReturn("MDR-1");
-        CreatePengirimanRequest req = new CreatePengirimanRequest("DRV-1", List.of("panen-1"));
-        when(pengirimanService.createPengiriman(eq("MDR-1"), any())).thenReturn(pengiriman);
+	@Test
+	void updateStatusSupir_success_returns200() throws Exception {
+		UUID id = UUID.randomUUID();
+		UpdateStatusRequest req = new UpdateStatusRequest("MENGIRIM");
+		samplePengiriman.setStatus(PengirimanStatus.MENGIRIM);
+		when(pengirimanService.updateStatusSupir(eq(supirId.toString()), eq(id), eq(PengirimanStatus.MENGIRIM)))
+				.thenReturn(samplePengiriman);
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("status", "MENGIRIM"));
 
-        ResponseEntity<Map<String, Object>> response = pengirimanController.createPengiriman(null, authentication, req);
+		mockMvc.perform(patch("/api/supir/pengiriman/{id}/status", id)
+						.header("X-User-Id", supirId.toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(req)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("MENGIRIM"));
+	}
 
-        assertEquals(200, response.getStatusCode().value());
-        assertNotNull(response.getBody());
-        assertEquals("MEMUAT", response.getBody().get("status"));
-    }
+	@Test
+	void driversForMandor_returnsDriversFromService() throws Exception {
+		when(pengirimanService.listSupirOnKebunMandor(mandorId.toString(), "supir"))
+				.thenReturn(List.of(Map.of(
+						"id", supirId.toString(),
+						"nama", "Supir",
+						"kebun_id", UUID.randomUUID().toString(),
+						"kontak", "supir@example.test")));
 
-    @Test
-    void pengirimanAktifSupir() {
-        when(authentication.getName()).thenReturn("DRV-1");
-        when(pengirimanService.pengirimanAktifSupir("DRV-1")).thenReturn(List.of(pengiriman));
+		mockMvc.perform(get("/api/mandor/drivers")
+						.header("X-User-Id", mandorId.toString())
+						.param("search", "supir"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].id").value(supirId.toString()))
+				.andExpect(jsonPath("$[0].nama").value("Supir"));
+	}
 
-        ResponseEntity<List<Map<String, Object>>> response = pengirimanController.pengirimanAktifSupir(null, authentication);
+	@Test
+	void panenSiapAngkut_withoutMandorHeaderReturnsAllAndHandlesNullFields() throws Exception {
+		HarvestResult h = new HarvestResult();
+		h.setId(panenId);
+		h.setKgHarvested(null);
+		h.setReadyForDelivery(true);
+		h.setStatus("APPROVED");
 
-        assertEquals(200, response.getStatusCode().value());
-        assertEquals(1, response.getBody().size());
-    }
+		when(harvestResultRepository.findByReadyForDeliveryIsTrue()).thenReturn(List.of(h));
 
-    @Test
-    void riwayatSupir() {
-        when(authentication.getName()).thenReturn("DRV-1");
-        when(pengirimanService.riwayatSupir(eq("DRV-1"), any(LocalDate.class), any(LocalDate.class))).thenReturn(List.of(pengiriman));
+		mockMvc.perform(get("/api/mandor/panen/siap-angkut"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].berat_kg").value(0))
+				.andExpect(jsonPath("$[0].kebun_id").doesNotExist())
+				.andExpect(jsonPath("$[0].mandor_id").doesNotExist());
+	}
 
-        ResponseEntity<List<Map<String, Object>>> response = pengirimanController.riwayatSupir(null, authentication, "2026-01-01", "2026-12-31");
+	@Test
+	void pengirimanAktifMandor_returnsMappedList() throws Exception {
+		when(pengirimanService.pengirimanAktifMandor(mandorId.toString())).thenReturn(List.of(samplePengiriman));
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("status", "MEMUAT"));
 
-        assertEquals(200, response.getStatusCode().value());
-        assertEquals(1, response.getBody().size());
-    }
+		mockMvc.perform(get("/api/mandor/pengiriman/aktif").header("X-User-Id", mandorId.toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].status").value("MEMUAT"));
+	}
 
-    @Test
-    void updateStatusSupir() {
-        when(authentication.getName()).thenReturn("DRV-1");
-        UpdateStatusRequest req = new UpdateStatusRequest("MENGIRIM");
-        when(pengirimanService.updateStatusSupir(eq("DRV-1"), any(), any())).thenReturn(pengiriman);
+	@Test
+	void pengirimanBySupirForMandor_usesDefaultDatesWhenParamsBlank() throws Exception {
+		when(pengirimanService.pengirimanBySupirForMandor(eq(mandorId.toString()), eq(supirId.toString()), any(), any()))
+				.thenReturn(List.of(samplePengiriman));
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("supir_id", supirId.toString()));
 
-        ResponseEntity<Map<String, Object>> response = pengirimanController.updateStatusSupir(null, authentication, pengiriman.getId(), req);
+		mockMvc.perform(get("/api/mandor/supir/{supirId}/pengiriman", supirId)
+						.header("X-User-Id", mandorId.toString())
+						.param("from", "")
+						.param("to", ""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].supir_id").value(supirId.toString()));
+	}
 
-        assertEquals(200, response.getStatusCode().value());
-    }
+	@Test
+	void pengirimanBySupirForMandor_parsesDateParams() throws Exception {
+		when(pengirimanService.pengirimanBySupirForMandor(
+				eq(mandorId.toString()), eq(supirId.toString()), eq(LocalDate.of(2026, 1, 1)), eq(LocalDate.of(2026, 1, 31))))
+				.thenReturn(List.of(samplePengiriman));
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("supir_id", supirId.toString()));
 
-    @Test
-    void pengirimanAktifMandor() {
-        when(authentication.getName()).thenReturn("MDR-1");
-        when(pengirimanService.pengirimanAktifMandor("MDR-1")).thenReturn(List.of(pengiriman));
+		mockMvc.perform(get("/api/mandor/supir/{supirId}/pengiriman", supirId)
+						.header("X-User-Id", mandorId.toString())
+						.param("from", "2026-01-01")
+						.param("to", "2026-01-31"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].supir_id").value(supirId.toString()));
+	}
 
-        ResponseEntity<List<Map<String, Object>>> response = pengirimanController.pengirimanAktifMandor(null, authentication);
+	@Test
+	void approveMandor_returnsMappedBody() throws Exception {
+		samplePengiriman.setStatus(PengirimanStatus.PENDING_ADMIN_REVIEW);
+		when(pengirimanService.approveByMandor(mandorId.toString(), samplePengiriman.getId()))
+				.thenReturn(samplePengiriman);
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("status", "PENDING_ADMIN_REVIEW"));
 
-        assertEquals(200, response.getStatusCode().value());
-    }
+		mockMvc.perform(post("/api/mandor/pengiriman/{id}/approve", samplePengiriman.getId())
+						.header("X-User-Id", mandorId.toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("PENDING_ADMIN_REVIEW"));
+	}
 
-    @Test
-    void pengirimanBySupirForMandor() {
-        when(authentication.getName()).thenReturn("MDR-1");
-        when(pengirimanService.pengirimanBySupirForMandor(eq("MDR-1"), eq("DRV-1"), any(LocalDate.class), any(LocalDate.class)))
-                .thenReturn(List.of(pengiriman));
+	@Test
+	void rejectMandor_returnsMappedBody() throws Exception {
+		RejectRequest request = new RejectRequest("rusak");
+		samplePengiriman.setStatus(PengirimanStatus.REJECTED_MANDOR);
+		when(pengirimanService.rejectByMandor(mandorId.toString(), samplePengiriman.getId(), "rusak"))
+				.thenReturn(samplePengiriman);
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("status", "REJECTED_MANDOR"));
 
-        ResponseEntity<List<Map<String, Object>>> response = pengirimanController.pengirimanBySupirForMandor(null, authentication, "DRV-1", null, null);
+		mockMvc.perform(post("/api/mandor/pengiriman/{id}/reject", samplePengiriman.getId())
+						.header("X-User-Id", mandorId.toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(request)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("REJECTED_MANDOR"));
+	}
 
-        assertEquals(200, response.getStatusCode().value());
-        assertEquals(1, response.getBody().size());
-    }
+	@Test
+	void pengirimanAktifSupir_returnsMappedList() throws Exception {
+		when(pengirimanService.pengirimanAktifSupir(supirId.toString())).thenReturn(List.of(samplePengiriman));
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("id", samplePengiriman.getId().toString()));
 
-    @Test
-    void approveMandor() {
-        when(authentication.getName()).thenReturn("MDR-1");
-        when(pengirimanService.approveByMandor(eq("MDR-1"), any())).thenReturn(pengiriman);
+		mockMvc.perform(get("/api/supir/pengiriman/aktif").header("X-User-Id", supirId.toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].id").value(samplePengiriman.getId().toString()));
+	}
 
-        ResponseEntity<Map<String, Object>> response = pengirimanController.approveMandor(null, authentication, pengiriman.getId());
+	@Test
+	void riwayatSupir_parsesDatesAndReturnsMappedList() throws Exception {
+		when(pengirimanService.riwayatSupir(
+				eq(supirId.toString()), eq(LocalDate.of(2026, 1, 1)), eq(LocalDate.of(2026, 1, 31))))
+				.thenReturn(List.of(samplePengiriman));
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("supir_id", supirId.toString()));
 
-        assertEquals(200, response.getStatusCode().value());
-    }
+		mockMvc.perform(get("/api/supir/pengiriman/riwayat")
+						.header("X-User-Id", supirId.toString())
+						.param("from", "2026-01-01")
+						.param("to", "2026-01-31"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].supir_id").value(supirId.toString()));
+	}
 
-    @Test
-    void rejectMandor() {
-        when(authentication.getName()).thenReturn("MDR-1");
-        RejectRequest req = new RejectRequest("reason");
-        when(pengirimanService.rejectByMandor(eq("MDR-1"), any(), anyString())).thenReturn(pengiriman);
+	@Test
+	void pendingAdmin_parsesOptionalDate() throws Exception {
+		when(pengirimanService.pendingAdmin("mandor", LocalDate.of(2026, 5, 21))).thenReturn(List.of(samplePengiriman));
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("status", "PENDING_ADMIN_REVIEW"));
 
-        ResponseEntity<Map<String, Object>> response = pengirimanController.rejectMandor(null, authentication, pengiriman.getId(), req);
+		mockMvc.perform(get("/api/admin/pengiriman/pending")
+						.param("mandor", "mandor")
+						.param("date", "2026-05-21"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].status").value("PENDING_ADMIN_REVIEW"));
+	}
 
-        assertEquals(200, response.getStatusCode().value());
-    }
+	@Test
+	void pendingAdmin_allowsBlankDate() throws Exception {
+		when(pengirimanService.pendingAdmin(null, null)).thenReturn(List.of(samplePengiriman));
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("status", "PENDING_ADMIN_REVIEW"));
 
-    @Test
-    void pendingAdmin() {
-        when(pengirimanService.pendingAdmin(null, null)).thenReturn(List.of(pengiriman));
+		mockMvc.perform(get("/api/admin/pengiriman/pending").param("date", ""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].status").value("PENDING_ADMIN_REVIEW"));
+	}
 
-        ResponseEntity<List<Map<String, Object>>> response = pengirimanController.pendingAdmin(null, null);
+	@Test
+	void detailAdmin_returnsMappedBody() throws Exception {
+		when(pengirimanService.getById(samplePengiriman.getId())).thenReturn(samplePengiriman);
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("id", samplePengiriman.getId().toString()));
 
-        assertEquals(200, response.getStatusCode().value());
-    }
+		mockMvc.perform(get("/api/admin/pengiriman/{id}", samplePengiriman.getId()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(samplePengiriman.getId().toString()));
+	}
 
-    @Test
-    void detailAdmin() {
-        when(pengirimanService.getById(pengiriman.getId())).thenReturn(pengiriman);
+	@Test
+	void approveAdmin_returnsMappedBody() throws Exception {
+		samplePengiriman.setStatus(PengirimanStatus.APPROVED_ADMIN);
+		when(pengirimanService.approveByAdmin(samplePengiriman.getId())).thenReturn(samplePengiriman);
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("status", "APPROVED_ADMIN"));
 
-        ResponseEntity<Map<String, Object>> response = pengirimanController.detailAdmin(pengiriman.getId());
+		mockMvc.perform(post("/api/admin/pengiriman/{id}/approve", samplePengiriman.getId()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("APPROVED_ADMIN"));
+	}
 
-        assertEquals(200, response.getStatusCode().value());
-    }
+	@Test
+	void partialRejectAdmin_returnsMappedBody() throws Exception {
+		PartialRejectRequest request = new PartialRejectRequest(100, "kurang");
+		samplePengiriman.setStatus(PengirimanStatus.PARTIAL_REJECTED_ADMIN);
+		when(pengirimanService.partialRejectByAdmin(samplePengiriman.getId(), 100, "kurang"))
+				.thenReturn(samplePengiriman);
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("status", "PARTIAL_REJECTED_ADMIN"));
 
-    @Test
-    void approveAdmin() {
-        when(pengirimanService.approveByAdmin(pengiriman.getId())).thenReturn(pengiriman);
+		mockMvc.perform(post("/api/admin/pengiriman/{id}/partial-reject", samplePengiriman.getId())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(request)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("PARTIAL_REJECTED_ADMIN"));
+	}
 
-        ResponseEntity<Map<String, Object>> response = pengirimanController.approveAdmin(pengiriman.getId());
+	@Test
+	void rejectAdmin_returnsMappedBody() throws Exception {
+		RejectRequest request = new RejectRequest("ditolak");
+		samplePengiriman.setStatus(PengirimanStatus.REJECTED_ADMIN);
+		when(pengirimanService.rejectByAdmin(samplePengiriman.getId(), "ditolak")).thenReturn(samplePengiriman);
+		when(pengirimanResponseMapper.toResponse(samplePengiriman)).thenReturn(Map.of("status", "REJECTED_ADMIN"));
 
-        assertEquals(200, response.getStatusCode().value());
-    }
+		mockMvc.perform(post("/api/admin/pengiriman/{id}/reject", samplePengiriman.getId())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(request)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("REJECTED_ADMIN"));
+	}
 
-    @Test
-    void partialRejectAdmin() {
-        PartialRejectRequest req = new PartialRejectRequest(50, "reason");
-        when(pengirimanService.partialRejectByAdmin(eq(pengiriman.getId()), eq(50), eq("reason"))).thenReturn(pengiriman);
+	@Test
+	void controllerMethodsPreferAuthenticationName() {
+		Authentication authentication = mock(Authentication.class);
+		when(authentication.getName()).thenReturn(mandorId.toString());
+		when(pengirimanService.listSupirOnKebunMandor(mandorId.toString(), ""))
+				.thenReturn(List.of(Map.of("id", supirId.toString())));
 
-        ResponseEntity<Map<String, Object>> response = pengirimanController.partialRejectAdmin(pengiriman.getId(), req);
+		var response = pengirimanController.driversForMandor("ignored", authentication, "");
 
-        assertEquals(200, response.getStatusCode().value());
-    }
+		assertEquals(1, response.getBody().size());
+		verify(pengirimanService).listSupirOnKebunMandor(mandorId.toString(), "");
+	}
 
-    @Test
-    void rejectAdmin() {
-        RejectRequest req = new RejectRequest("reason");
-        when(pengirimanService.rejectByAdmin(eq(pengiriman.getId()), eq("reason"))).thenReturn(pengiriman);
-
-        ResponseEntity<Map<String, Object>> response = pengirimanController.rejectAdmin(pengiriman.getId(), req);
-
-        assertEquals(200, response.getStatusCode().value());
-    }
 }

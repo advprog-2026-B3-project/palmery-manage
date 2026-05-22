@@ -72,12 +72,30 @@ tasks.jacocoTestReport {
 }
 
 tasks.jacocoTestCoverageVerification {
+    onlyIf {
+        gradle.startParameter.taskRequests.none { request ->
+            request.args.contains("--tests")
+        }
+    }
     violationRules {
         rule {
             limit {
                 counter = "LINE"
                 value = "COVEREDRATIO"
                 minimum = "0.30".toBigDecimal()
+            }
+        }
+        rule {
+            element = "CLASS"
+            includes = listOf(
+                "id.ac.ui.cs.advprog.palmerymanage.controller.PengirimanController",
+                "id.ac.ui.cs.advprog.palmerymanage.service.PengirimanService",
+                "id.ac.ui.cs.advprog.palmerymanage.pengiriman.*",
+            )
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.90".toBigDecimal()
             }
         }
     }

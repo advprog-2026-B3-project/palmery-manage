@@ -1,6 +1,8 @@
 package id.ac.ui.cs.advprog.palmerymanage.service;
 
 import id.ac.ui.cs.advprog.palmerymanage.config.AuthIntegrationProperties;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.DriverDirectoryLookup;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.DriverProfileLookup;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -8,6 +10,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
@@ -16,7 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 @Slf4j
 @Component
-public class AuthUserClient {
+public class AuthUserClient implements DriverProfileLookup, DriverDirectoryLookup {
 
     private final AuthIntegrationProperties properties;
     private final RestTemplate restTemplate = new RestTemplate();
@@ -27,6 +30,7 @@ public class AuthUserClient {
         this.properties = properties;
     }
 
+    @Override
     public Map<UUID, UserSummary> fetchUsersByIds(List<UUID> ids) {
         if (!properties.isEnabled() || ids == null || ids.isEmpty()) {
             return Map.of();
@@ -65,6 +69,43 @@ public class AuthUserClient {
         } catch (Exception ex) {
             log.warn("Failed to fetch users from auth service: {}", ex.getMessage());
             return Map.of();
+        }
+    }
+
+    @Override
+    public List<UserSummary> fetchUsersByRole(String role) {
+        if (!properties.isEnabled() || role == null || role.isBlank()) {
+            return List.of();
+        }
+
+        try {
+            String token = obtainServiceToken();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(token);
+
+            HttpEntity<Void> request = new HttpEntity<>(headers);
+            ResponseEntity<List> response = restTemplate.exchange(
+                    UriComponentsBuilder.fromHttpUrl(properties.getBaseUrl())
+                            .path("/api/users")
+                            .queryParam("role", role)
+                            .toUriString(),
+                    HttpMethod.GET,
+                    request,
+                    List.class
+            );
+
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                return List.of();
+            }
+
+            return response.getBody().stream()
+                    .filter(Map.class::isInstance)
+                    .map(row -> fromMap((Map<?, ?>) row))
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+        } catch (Exception ex) {
+            log.warn("Failed to fetch users by role from auth service: {}", ex.getMessage());
+            return List.of();
         }
     }
 

@@ -4,9 +4,7 @@ import id.ac.ui.cs.advprog.palmerymanage.dto.*;
 import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import org.springframework.stereotype.Component;
 
-/**
- * Responsible solely for mapping between Plantation entity and DTOs (SRP).
- */
+// Responsible solely for mapping between Plantation entity and DTOs (SRP).
 @Component
 public class PlantationMapper {
 
