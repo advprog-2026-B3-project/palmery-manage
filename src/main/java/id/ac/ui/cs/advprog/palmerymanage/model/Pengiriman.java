@@ -43,9 +43,20 @@ public class Pengiriman {
     @Column(name = "kebun_id", nullable = false)
     private String kebunId;
 
+    /** Delivery status: MEMUAT, MENGIRIM, TIBA_DI_TUJUAN */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 40)
     private PengirimanStatus status = PengirimanStatus.MEMUAT;
+
+    /** Mandor approval after delivery arrives */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mandor_approval_status", nullable = false, length = 20)
+    private ApprovalStatus mandorApprovalStatus = ApprovalStatus.PENDING;
+
+    /** Admin approval after Mandor approves */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "admin_approval_status", nullable = false, length = 30)
+    private AdminApprovalStatus adminApprovalStatus = AdminApprovalStatus.PENDING;
 
     @Column(name = "total_kg", nullable = false)
     private int totalKg;
@@ -58,8 +69,13 @@ public class Pengiriman {
     @Column(name = "rejected_reason", columnDefinition = "TEXT")
     private String rejectedReason;
 
+    /** Kg recognized/accepted by admin (for partial approval) */
     @Column(name = "recognized_kg")
     private Integer recognizedKg;
+
+    /** Kg accepted by admin at factory validation */
+    @Column(name = "accepted_kg_by_admin")
+    private Integer acceptedKgByAdmin;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

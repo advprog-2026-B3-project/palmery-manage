@@ -1,5 +1,7 @@
 package id.ac.ui.cs.advprog.palmerymanage.repository;
 
+import id.ac.ui.cs.advprog.palmerymanage.model.AdminApprovalStatus;
+import id.ac.ui.cs.advprog.palmerymanage.model.ApprovalStatus;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
 import id.ac.ui.cs.advprog.palmerymanage.model.PengirimanStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,6 +23,11 @@ public interface PengirimanRepository extends JpaRepository<Pengiriman, UUID> {
     List<Pengiriman> findBySupirIdAndMandorIdAndCreatedAtBetween(
             String supirId, String mandorId, Instant from, Instant to);
 
+    // New: query by approval statuses
+    List<Pengiriman> findByMandorApprovalStatusAndAdminApprovalStatus(
+            ApprovalStatus mandorApprovalStatus, AdminApprovalStatus adminApprovalStatus);
+
+    // Legacy queries (kept for backward compat)
     List<Pengiriman> findByStatus(PengirimanStatus status);
 
     List<Pengiriman> findByStatusAndCreatedAtBetween(

@@ -4,15 +4,25 @@ import id.ac.ui.cs.advprog.palmerymanage.dto.CreatePengirimanRequest;
 import id.ac.ui.cs.advprog.palmerymanage.exception.BadRequestException;
 import id.ac.ui.cs.advprog.palmerymanage.exception.ForbiddenException;
 import id.ac.ui.cs.advprog.palmerymanage.exception.OverWeightException;
+import id.ac.ui.cs.advprog.palmerymanage.model.AdminApprovalStatus;
+import id.ac.ui.cs.advprog.palmerymanage.model.ApprovalStatus;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
 import id.ac.ui.cs.advprog.palmerymanage.model.PengirimanStatus;
+import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.model.PlantationAssignment;
 import id.ac.ui.cs.advprog.palmerymanage.model.PlantationAssignment.PersonnelRole;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.DriverDirectoryLookup;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.DriverProfileLookup;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanEventPublisher;
+import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanStatusTransitionPolicy;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.PengirimanRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationAssignmentRepository;
+import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,40 +41,43 @@ public class PengirimanService {
 
     static final int MAX_TOTAL_KG = 400;
 
-    private static final List<PengirimanStatus> AKTIF_SUPIR = List.of(
+    private static final List<PengirimanStatus> DELIVERY_ACTIVE = List.of(
             PengirimanStatus.MEMUAT,
             PengirimanStatus.MENGIRIM,
-            PengirimanStatus.TIBA_DI_TUJUAN,
-            PengirimanStatus.PENDING_MANDOR_REVIEW,
-            PengirimanStatus.PENDING_ADMIN_REVIEW
-    );
-
-    private static final List<PengirimanStatus> AKTIF_MANDOR = List.of(
-            PengirimanStatus.MEMUAT,
-            PengirimanStatus.MENGIRIM,
-            PengirimanStatus.TIBA_DI_TUJUAN,
-            PengirimanStatus.PENDING_MANDOR_REVIEW,
-            PengirimanStatus.PENDING_ADMIN_REVIEW,
-            PengirimanStatus.APPROVED_MANDOR
+            PengirimanStatus.TIBA_DI_TUJUAN
     );
 
     private final PengirimanRepository pengirimanRepository;
     private final HarvestResultRepository harvestResultRepository;
     private final PlantationAssignmentRepository plantationAssignmentRepository;
+    private final PlantationRepository plantationRepository;
     private final PengirimanEventPublisher eventPublisher;
-    private final AuthUserClient authUserClient;
+    private final PengirimanStatusTransitionPolicy statusTransitionPolicy;
+    private final DriverProfileLookup driverProfileLookup;
+    private final DriverDirectoryLookup driverDirectoryLookup;
+    private final Environment environment;
 
     public PengirimanService(PengirimanRepository pengirimanRepository,
                              HarvestResultRepository harvestResultRepository,
                              PlantationAssignmentRepository plantationAssignmentRepository,
+                             PlantationRepository plantationRepository,
                              PengirimanEventPublisher eventPublisher,
-                             AuthUserClient authUserClient) {
+                             PengirimanStatusTransitionPolicy statusTransitionPolicy,
+                             DriverProfileLookup driverProfileLookup,
+                             DriverDirectoryLookup driverDirectoryLookup,
+                             Environment environment) {
         this.pengirimanRepository = pengirimanRepository;
         this.harvestResultRepository = harvestResultRepository;
         this.plantationAssignmentRepository = plantationAssignmentRepository;
+        this.plantationRepository = plantationRepository;
         this.eventPublisher = eventPublisher;
-        this.authUserClient = authUserClient;
+        this.statusTransitionPolicy = statusTransitionPolicy;
+        this.driverProfileLookup = driverProfileLookup;
+        this.driverDirectoryLookup = driverDirectoryLookup;
+        this.environment = environment;
     }
+
+    // ─── Supir list for Mandor ────────────────────────────────────────────────
 
     public List<Map<String, Object>> listSupirOnKebunMandor(String mandorId, String search) {
         UUID mandorUuid = parsePersonnelId(mandorId, "Mandor");
@@ -73,10 +86,19 @@ public class PengirimanService {
         List<PlantationAssignment> supirAssignments =
                 plantationAssignmentRepository.findByPlantationIdAndRole(kebunId, PersonnelRole.SUPIR);
 
+        if (isDevProfile()) {
+            List<AuthUserClient.UserSummary> authDrivers = driverDirectoryLookup.fetchUsersByRole("DRIVER");
+            if (!authDrivers.isEmpty()) {
+                supirAssignments = authDrivers.stream()
+                        .map(driver -> assignPersonnelIfMissing(kebunId, driver.id(), PersonnelRole.SUPIR))
+                        .toList();
+            }
+        }
+
         List<UUID> supirIds = supirAssignments.stream()
                 .map(PlantationAssignment::getPersonnelId)
                 .toList();
-        Map<UUID, AuthUserClient.UserSummary> profiles = authUserClient.fetchUsersByIds(supirIds);
+        Map<UUID, AuthUserClient.UserSummary> profiles = driverProfileLookup.fetchUsersByIds(supirIds);
 
         String searchLower = search == null ? "" : search.trim().toLowerCase();
         List<Map<String, Object>> result = new ArrayList<>();
@@ -105,6 +127,8 @@ public class PengirimanService {
         return result;
     }
 
+    // ─── Create Pengiriman (Mandor) ───────────────────────────────────────────
+
     public Pengiriman createPengiriman(String mandorId, CreatePengirimanRequest request) {
         if (mandorId == null || mandorId.isBlank()) {
             throw new BadRequestException("Mandor tidak ditemukan");
@@ -128,6 +152,13 @@ public class PengirimanService {
         List<HarvestResult> panenList = harvestResultRepository.findAllById(panenUuids);
         if (panenList.size() != panenUuids.size()) {
             throw new BadRequestException("Beberapa hasil panen tidak ditemukan");
+        }
+
+        // Only APPROVED harvests can be shipped
+        boolean hasNonApproved = panenList.stream()
+                .anyMatch(panen -> !"APPROVED".equals(panen.getStatus()));
+        if (hasNonApproved) {
+            throw new BadRequestException("Semua hasil panen harus berstatus APPROVED");
         }
 
         boolean hasNonReady = panenList.stream()
@@ -155,6 +186,7 @@ public class PengirimanService {
             throw new BadRequestException("Hasil panen harus berasal dari kebun yang sama dengan mandor");
         }
 
+        // Mark harvests as no longer available for delivery
         for (HarvestResult panen : panenList) {
             panen.setReadyForDelivery(false);
         }
@@ -167,14 +199,151 @@ public class PengirimanService {
         pengiriman.setTotalKg(total);
         pengiriman.setPanenIds(request.panenIds());
         pengiriman.setStatus(PengirimanStatus.MEMUAT);
+        pengiriman.setMandorApprovalStatus(ApprovalStatus.PENDING);
+        pengiriman.setAdminApprovalStatus(AdminApprovalStatus.PENDING);
 
         log.info("Pengiriman created: supirId={}, mandorId={}, totalKg={}, panenCount={}",
                 request.supirId(), mandorId, total, panenList.size());
         return pengirimanRepository.save(pengiriman);
     }
 
+    // ─── Supir: update delivery status ────────────────────────────────────────
+
+    public Pengiriman updateStatusSupir(String supirId, UUID id, PengirimanStatus target) {
+        Pengiriman pengiriman = pengirimanRepository.findById(id)
+                .orElseThrow(() -> new BadRequestException("Pengiriman tidak ditemukan"));
+
+        if (!pengiriman.getSupirId().equals(supirId)) {
+            throw new ForbiddenException("Supir tidak berhak mengubah pengiriman ini");
+        }
+
+        PengirimanStatus current = pengiriman.getStatus();
+        if (!statusTransitionPolicy.canTransition(current, target)) {
+            throw new BadRequestException("Transisi status tidak valid: " + current + " -> " + target);
+        }
+
+        pengiriman.setStatus(target);
+
+        if (target == PengirimanStatus.TIBA_DI_TUJUAN) {
+            eventPublisher.publishPengirimanTiba(pengiriman);
+        }
+
+        return pengirimanRepository.save(pengiriman);
+    }
+
+    boolean isValidTransitionForDriver(PengirimanStatus from, PengirimanStatus to) {
+        return statusTransitionPolicy.canTransition(from, to);
+    }
+
+    // ─── Mandor: approve/reject after TIBA_DI_TUJUAN ──────────────────────────
+
+    public Pengiriman approveByMandor(String mandorId, UUID id) {
+        Pengiriman pengiriman = requireOwnedByMandor(mandorId, id);
+        if (pengiriman.getStatus() != PengirimanStatus.TIBA_DI_TUJUAN) {
+            throw new BadRequestException("Pengiriman belum tiba di tujuan");
+        }
+        if (pengiriman.getMandorApprovalStatus() != ApprovalStatus.PENDING) {
+            throw new BadRequestException("Pengiriman sudah diproses mandor");
+        }
+
+        pengiriman.setMandorApprovalStatus(ApprovalStatus.APPROVED);
+        eventPublisher.publishPengirimanApprovedMandor(pengiriman);
+
+        log.info("Pengiriman {} approved by mandor {}", id, mandorId);
+        return pengirimanRepository.save(pengiriman);
+    }
+
+    public Pengiriman rejectByMandor(String mandorId, UUID id, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new BadRequestException("Alasan penolakan wajib diisi");
+        }
+        Pengiriman pengiriman = requireOwnedByMandor(mandorId, id);
+        if (pengiriman.getStatus() != PengirimanStatus.TIBA_DI_TUJUAN) {
+            throw new BadRequestException("Pengiriman belum tiba di tujuan");
+        }
+        if (pengiriman.getMandorApprovalStatus() != ApprovalStatus.PENDING) {
+            throw new BadRequestException("Pengiriman sudah diproses mandor");
+        }
+
+        pengiriman.setMandorApprovalStatus(ApprovalStatus.REJECTED);
+        pengiriman.setRejectedReason(reason.trim());
+
+        log.info("Pengiriman {} rejected by mandor {}: {}", id, mandorId, reason);
+        return pengirimanRepository.save(pengiriman);
+    }
+
+    // ─── Admin: validate after Mandor approves ────────────────────────────────
+
+    public List<Pengiriman> pendingAdmin(String mandorSearch, LocalDate date) {
+        // Admin sees pengiriman where mandorApprovalStatus=APPROVED and adminApprovalStatus=PENDING
+        List<Pengiriman> all = pengirimanRepository.findByMandorApprovalStatusAndAdminApprovalStatus(
+                ApprovalStatus.APPROVED, AdminApprovalStatus.PENDING);
+
+        String search = mandorSearch == null ? "" : mandorSearch.trim().toLowerCase();
+        return all.stream()
+                .filter(p -> search.isEmpty() || p.getMandorId().toLowerCase().contains(search))
+                .filter(p -> {
+                    if (date == null) return true;
+                    Instant start = date.atStartOfDay().toInstant(ZoneOffset.UTC);
+                    Instant end = date.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
+                    return !p.getCreatedAt().isBefore(start) && p.getCreatedAt().isBefore(end);
+                })
+                .toList();
+    }
+
+    public Pengiriman approveByAdmin(UUID id) {
+        Pengiriman pengiriman = requirePendingAdminReview(id);
+
+        pengiriman.setAdminApprovalStatus(AdminApprovalStatus.APPROVED);
+        pengiriman.setAcceptedKgByAdmin(pengiriman.getTotalKg());
+        eventPublisher.publishPengirimanApprovedAdmin(pengiriman, pengiriman.getTotalKg());
+
+        log.info("Pengiriman {} fully approved by admin, acceptedKg={}", id, pengiriman.getTotalKg());
+        return pengirimanRepository.save(pengiriman);
+    }
+
+    public Pengiriman partialRejectByAdmin(UUID id, int acceptedKg, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new BadRequestException("Alasan penolakan wajib diisi");
+        }
+        Pengiriman pengiriman = requirePendingAdminReview(id);
+
+        if (acceptedKg <= 0 || acceptedKg >= pengiriman.getTotalKg()) {
+            throw new BadRequestException("Berat yang diakui harus > 0 dan < total (" + pengiriman.getTotalKg() + " kg)");
+        }
+
+        pengiriman.setAdminApprovalStatus(AdminApprovalStatus.PARTIALLY_APPROVED);
+        pengiriman.setAcceptedKgByAdmin(acceptedKg);
+        pengiriman.setRecognizedKg(acceptedKg);
+        pengiriman.setRejectedReason(reason.trim());
+        eventPublisher.publishPengirimanApprovedAdmin(pengiriman, acceptedKg);
+
+        log.info("Pengiriman {} partially approved by admin, acceptedKg={}/{}", id, acceptedKg, pengiriman.getTotalKg());
+        return pengirimanRepository.save(pengiriman);
+    }
+
+    public Pengiriman rejectByAdmin(UUID id, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new BadRequestException("Alasan penolakan wajib diisi");
+        }
+        Pengiriman pengiriman = requirePendingAdminReview(id);
+
+        pengiriman.setAdminApprovalStatus(AdminApprovalStatus.REJECTED);
+        pengiriman.setRejectedReason(reason.trim());
+
+        log.info("Pengiriman {} rejected by admin: {}", id, reason);
+        return pengirimanRepository.save(pengiriman);
+    }
+
+    // ─── Queries ──────────────────────────────────────────────────────────────
+
+    public Pengiriman getById(UUID id) {
+        return pengirimanRepository.findById(id)
+                .orElseThrow(() -> new BadRequestException("Pengiriman tidak ditemukan"));
+    }
+
     public List<Pengiriman> pengirimanAktifSupir(String supirId) {
-        return pengirimanRepository.findBySupirIdAndStatusIn(supirId, AKTIF_SUPIR);
+        return pengirimanRepository.findBySupirIdAndStatusIn(supirId, DELIVERY_ACTIVE);
     }
 
     public List<Pengiriman> riwayatSupir(String supirId, LocalDate from, LocalDate to) {
@@ -184,7 +353,7 @@ public class PengirimanService {
     }
 
     public List<Pengiriman> pengirimanAktifMandor(String mandorId) {
-        return pengirimanRepository.findByMandorIdAndStatusIn(mandorId, AKTIF_MANDOR);
+        return pengirimanRepository.findByMandorIdAndStatusIn(mandorId, DELIVERY_ACTIVE);
     }
 
     public List<Pengiriman> pengirimanBySupirForMandor(
@@ -196,117 +365,7 @@ public class PengirimanService {
                 supirId, mandorId, fromInstant, toInstant);
     }
 
-    public Pengiriman updateStatusSupir(String supirId, UUID id, PengirimanStatus target) {
-        Pengiriman pengiriman = pengirimanRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Pengiriman tidak ditemukan"));
-
-        if (!pengiriman.getSupirId().equals(supirId)) {
-            throw new ForbiddenException("Supir tidak berhak mengubah pengiriman ini");
-        }
-
-        PengirimanStatus current = pengiriman.getStatus();
-        if (!isValidTransitionForDriver(current, target)) {
-            throw new BadRequestException("Transisi status tidak valid");
-        }
-
-        pengiriman.setStatus(target);
-
-        if (target == PengirimanStatus.TIBA_DI_TUJUAN) {
-            eventPublisher.publishPengirimanTiba(pengiriman);
-            pengiriman.setStatus(PengirimanStatus.PENDING_MANDOR_REVIEW);
-        }
-
-        return pengiriman;
-    }
-
-    boolean isValidTransitionForDriver(PengirimanStatus from, PengirimanStatus to) {
-        return switch (from) {
-            case MEMUAT -> to == PengirimanStatus.MENGIRIM;
-            case MENGIRIM -> to == PengirimanStatus.TIBA_DI_TUJUAN;
-            default -> false;
-        };
-    }
-
-    public Pengiriman approveByMandor(String mandorId, UUID id) {
-        Pengiriman pengiriman = requireOwnedByMandor(mandorId, id);
-        if (pengiriman.getStatus() != PengirimanStatus.PENDING_MANDOR_REVIEW) {
-            throw new BadRequestException("Pengiriman belum siap di-approve mandor");
-        }
-        pengiriman.setStatus(PengirimanStatus.PENDING_ADMIN_REVIEW);
-        eventPublisher.publishPengirimanApprovedMandor(pengiriman);
-        return pengiriman;
-    }
-
-    public Pengiriman rejectByMandor(String mandorId, UUID id, String reason) {
-        if (reason == null || reason.isBlank()) {
-            throw new BadRequestException("Alasan penolakan wajib diisi");
-        }
-        Pengiriman pengiriman = requireOwnedByMandor(mandorId, id);
-        if (pengiriman.getStatus() != PengirimanStatus.PENDING_MANDOR_REVIEW) {
-            throw new BadRequestException("Pengiriman belum siap ditolak mandor");
-        }
-        pengiriman.setStatus(PengirimanStatus.REJECTED_MANDOR);
-        pengiriman.setRejectedReason(reason.trim());
-        return pengiriman;
-    }
-
-    public List<Pengiriman> pendingAdmin(String mandorSearch, LocalDate date) {
-        PengirimanStatus status = PengirimanStatus.PENDING_ADMIN_REVIEW;
-        String search = mandorSearch == null ? "" : mandorSearch.trim();
-
-        if (!search.isEmpty() && date != null) {
-            Instant[] range = dayRange(date);
-            return pengirimanRepository.findByStatusAndMandorIdContainingIgnoreCaseAndCreatedAtBetween(
-                    status, search, range[0], range[1]);
-        }
-        if (!search.isEmpty()) {
-            return pengirimanRepository.findByStatusAndMandorIdContainingIgnoreCase(status, search);
-        }
-        if (date != null) {
-            Instant[] range = dayRange(date);
-            return pengirimanRepository.findByStatusAndCreatedAtBetween(status, range[0], range[1]);
-        }
-        return pengirimanRepository.findByStatus(status);
-    }
-
-    public Pengiriman getById(UUID id) {
-        return pengirimanRepository.findById(id)
-                .orElseThrow(() -> new BadRequestException("Pengiriman tidak ditemukan"));
-    }
-
-    public Pengiriman approveByAdmin(UUID id) {
-        Pengiriman pengiriman = requirePendingAdminReview(id);
-        pengiriman.setStatus(PengirimanStatus.APPROVED_ADMIN);
-        eventPublisher.publishPengirimanApprovedAdmin(pengiriman, pengiriman.getTotalKg());
-        return pengiriman;
-    }
-
-    public Pengiriman partialRejectByAdmin(UUID id, int recognizedKg, String reason) {
-        if (reason == null || reason.isBlank()) {
-            throw new BadRequestException("Alasan penolakan wajib diisi");
-        }
-        Pengiriman pengiriman = requirePendingAdminReview(id);
-
-        if (recognizedKg <= 0 || recognizedKg > pengiriman.getTotalKg()) {
-            throw new BadRequestException("Berat yang diakui harus > 0 dan <= total");
-        }
-
-        pengiriman.setStatus(PengirimanStatus.PARTIAL_REJECTED_ADMIN);
-        pengiriman.setRecognizedKg(recognizedKg);
-        pengiriman.setRejectedReason(reason.trim());
-        eventPublisher.publishPengirimanApprovedAdmin(pengiriman, recognizedKg);
-        return pengiriman;
-    }
-
-    public Pengiriman rejectByAdmin(UUID id, String reason) {
-        if (reason == null || reason.isBlank()) {
-            throw new BadRequestException("Alasan penolakan wajib diisi");
-        }
-        Pengiriman pengiriman = requirePendingAdminReview(id);
-        pengiriman.setStatus(PengirimanStatus.REJECTED_ADMIN);
-        pengiriman.setRejectedReason(reason.trim());
-        return pengiriman;
-    }
+    // ─── Private helpers ──────────────────────────────────────────────────────
 
     private Pengiriman requireOwnedByMandor(String mandorId, UUID id) {
         Pengiriman pengiriman = getById(id);
@@ -318,8 +377,11 @@ public class PengirimanService {
 
     private Pengiriman requirePendingAdminReview(UUID id) {
         Pengiriman pengiriman = getById(id);
-        if (pengiriman.getStatus() != PengirimanStatus.PENDING_ADMIN_REVIEW) {
-            throw new BadRequestException("Pengiriman belum disetujui mandor atau sudah diproses admin");
+        if (pengiriman.getMandorApprovalStatus() != ApprovalStatus.APPROVED) {
+            throw new BadRequestException("Pengiriman belum disetujui mandor");
+        }
+        if (pengiriman.getAdminApprovalStatus() != AdminApprovalStatus.PENDING) {
+            throw new BadRequestException("Pengiriman sudah diproses admin");
         }
         return pengiriman;
     }
@@ -334,6 +396,10 @@ public class PengirimanService {
         List<PlantationAssignment> assignments = plantationAssignmentRepository
                 .findByPersonnelIdAndRole(mandorUuid, PersonnelRole.MANDOR);
         if (assignments.isEmpty()) {
+            if (isDevProfile()) {
+                UUID kebunId = ensureDevPlantation().getId();
+                return assignPersonnelIfMissing(kebunId, mandorUuid, PersonnelRole.MANDOR).getPlantationId();
+            }
             throw new BadRequestException("Mandor belum ditugaskan ke kebun");
         }
         return assignments.getFirst().getPlantationId();
@@ -344,8 +410,44 @@ public class PengirimanService {
         boolean assigned = plantationAssignmentRepository
                 .existsByPlantationIdAndPersonnelIdAndRole(kebunId, supirUuid, PersonnelRole.SUPIR);
         if (!assigned) {
+            if (isDevProfile()) {
+                assignPersonnelIfMissing(kebunId, supirUuid, PersonnelRole.SUPIR);
+                return;
+            }
             throw new BadRequestException("Supir tidak bertugas di kebun yang sama dengan mandor");
         }
+    }
+
+    private Plantation ensureDevPlantation() {
+        return plantationRepository.findByCode("DEV-KEBUN-1")
+                .orElseGet(() -> plantationRepository.save(Plantation.builder()
+                        .name("Kebun Dev")
+                        .code("DEV-KEBUN-1")
+                        .areaHa(1.0)
+                        .coordTlLat(0.0)
+                        .coordTlLon(0.0)
+                        .coordTrLat(0.0)
+                        .coordTrLon(0.01)
+                        .coordBrLat(-0.01)
+                        .coordBrLon(0.01)
+                        .coordBlLat(-0.01)
+                        .coordBlLon(0.0)
+                        .isActive(true)
+                        .build()));
+    }
+
+    private PlantationAssignment assignPersonnelIfMissing(UUID kebunId, UUID personnelId, PersonnelRole role) {
+        return plantationAssignmentRepository
+                .findByPlantationIdAndPersonnelIdAndRole(kebunId, personnelId, role)
+                .orElseGet(() -> plantationAssignmentRepository.save(PlantationAssignment.builder()
+                        .plantationId(kebunId)
+                        .personnelId(personnelId)
+                        .role(role)
+                        .build()));
+    }
+
+    private boolean isDevProfile() {
+        return environment.acceptsProfiles(Profiles.of("dev"));
     }
 
     private UUID parsePersonnelId(String rawId, String label) {
@@ -354,11 +456,5 @@ public class PengirimanService {
         } catch (IllegalArgumentException ex) {
             throw new BadRequestException(label + " ID tidak valid: " + rawId);
         }
-    }
-
-    private Instant[] dayRange(LocalDate date) {
-        Instant from = date.atStartOfDay().toInstant(ZoneOffset.UTC);
-        Instant to = date.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
-        return new Instant[]{from, to};
     }
 }
