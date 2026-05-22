@@ -65,8 +65,7 @@ class RustfsServiceTest {
         org.springframework.web.multipart.MultipartFile file = mock(org.springframework.web.multipart.MultipartFile.class);
         when(file.getOriginalFilename()).thenReturn(null);
         when(file.getContentType()).thenReturn("image/jpeg");
-        when(file.getInputStream()).thenReturn(new java.io.ByteArrayInputStream("dummy data".getBytes()));
-        when(file.getSize()).thenReturn(10L);
+        when(file.getBytes()).thenReturn("dummy data".getBytes());
 
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build());

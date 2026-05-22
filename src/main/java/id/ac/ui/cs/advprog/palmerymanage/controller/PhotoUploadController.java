@@ -48,10 +48,12 @@ public class PhotoUploadController {
 
         try {
             RustfsService.StoredFile storedFile = rustfsService.uploadFile(file);
+            String originalFilename = file.getOriginalFilename();
+            String responseFilename = (originalFilename == null || originalFilename.isBlank()) ? "file" : originalFilename;
             Map<String, Object> response = new HashMap<>();
             response.put("url", "/api/harvests/photos/" + storedFile.key());
             response.put("storageUrl", storedFile.publicUrl());
-            response.put("filename", file.getOriginalFilename() != null ? file.getOriginalFilename() : "file");
+            response.put("filename", responseFilename);
             response.put("sizeBytes", file.getSize());
 
             return ResponseEntity.ok(response);

@@ -56,7 +56,7 @@ public class RustfsService {
             String contentType = file.getContentType() == null ? "application/octet-stream" : file.getContentType();
             putObject(filename, contentType, file.getBytes());
             return new StoredFile(filename, buildPublicUrl(filename));
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException("Gagal upload foto ke Rustfs: " + e.getMessage(), e);
         }
     }
