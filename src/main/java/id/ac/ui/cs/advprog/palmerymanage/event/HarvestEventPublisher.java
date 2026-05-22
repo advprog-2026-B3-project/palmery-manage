@@ -2,11 +2,14 @@ package id.ac.ui.cs.advprog.palmerymanage.event;
 
 import id.ac.ui.cs.advprog.palmerymanage.service.DomainEventPublisher;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Slf4j
@@ -17,13 +20,13 @@ public class HarvestEventPublisher {
     private final DomainEventPublisher domainEventPublisher;
 
     @Value("${rabbitmq.exchange.harvest:harvest_exchange}")
-    private String exchange;
+    private String exchange = "harvest_exchange";
 
     @Value("${rabbitmq.routingkey.harvest.approved:harvest_approved_routing_key}")
-    private String routingKeyApproved;
+    private String routingKeyApproved = "harvest_approved_routing_key";
 
     @Value("${rabbitmq.routingkey.harvest.submitted:harvest_submitted_routing_key}")
-    private String routingKeySubmitted;
+    private String routingKeySubmitted = "harvest_submitted_routing_key";
 
     public HarvestEventPublisher(RabbitTemplate rabbitTemplate, DomainEventPublisher domainEventPublisher) {
         this.rabbitTemplate = rabbitTemplate;

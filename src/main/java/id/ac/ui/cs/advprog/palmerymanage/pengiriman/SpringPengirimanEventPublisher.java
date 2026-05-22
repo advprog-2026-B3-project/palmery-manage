@@ -2,15 +2,14 @@ package id.ac.ui.cs.advprog.palmerymanage.pengiriman;
 
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedAdminEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedMandorEvent;
-import id.ac.ui.cs.advprog.palmerymanage.event.DomainEventPublisher;
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanTibaEvent;
+import id.ac.ui.cs.advprog.palmerymanage.model.AdminApprovalStatus;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
 import id.ac.ui.cs.advprog.palmerymanage.service.DomainEventPublisher;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.Map;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -36,6 +35,7 @@ public class SpringPengirimanEventPublisher implements PengirimanEventPublisher 
                 pengiriman.getPanenIds(),
                 Instant.now()
         );
+        publisher.publishEvent(event);
         domainEventPublisher.publish("PengirimanTiba", buildShipmentPayload(event, pengiriman.getTotalKg(), "Pengiriman tiba"));
     }
 
@@ -48,7 +48,8 @@ public class SpringPengirimanEventPublisher implements PengirimanEventPublisher 
                 pengiriman.getTotalKg(),
                 pengiriman.getPanenIds(),
                 Instant.now()
-        ));
+        );
+        publisher.publishEvent(event);
         domainEventPublisher.publish("PENGIRIMAN_APPROVED_BY_MANDOR", pengirimanApprovedMandorPayload(pengiriman));
     }
 
@@ -62,15 +63,21 @@ public class SpringPengirimanEventPublisher implements PengirimanEventPublisher 
                 recognizedKg,
                 pengiriman.getPanenIds(),
                 Instant.now()
-        ));
-        domainEventPublisher.publish("PENGIRIMAN_APPROVED_BY_ADMIN", pengirimanApprovedAdminPayload(pengiriman, recognizedKg));
+        );
+        publisher.publishEvent(event);
+
+        String eventType = pengiriman.getAdminApprovalStatus() == AdminApprovalStatus.PARTIALLY_APPROVED
+                ? "PENGIRIMAN_PARTIALLY_APPROVED_BY_ADMIN"
+                : "PENGIRIMAN_APPROVED_BY_ADMIN";
+        domainEventPublisher.publish(eventType, pengirimanApprovedAdminPayload(pengiriman, recognizedKg));
     }
 
     private Map<String, Object> pengirimanApprovedMandorPayload(Pengiriman pengiriman) {
-        Map<String, Object> payload = new HashMap<>();
+        Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("pengirimanId", pengiriman.getId().toString());
         payload.put("supirId", pengiriman.getSupirId());
         payload.put("mandorId", pengiriman.getMandorId());
+        payload.put("kebunId", pengiriman.getKebunId());
         payload.put("userId", pengiriman.getSupirId());
         payload.put("quantityKg", BigDecimal.valueOf(pengiriman.getTotalKg()));
         payload.put("totalKg", pengiriman.getTotalKg());
@@ -81,10 +88,11 @@ public class SpringPengirimanEventPublisher implements PengirimanEventPublisher 
     }
 
     private Map<String, Object> pengirimanApprovedAdminPayload(Pengiriman pengiriman, int recognizedKg) {
-        Map<String, Object> payload = new HashMap<>();
+        Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("pengirimanId", pengiriman.getId().toString());
         payload.put("supirId", pengiriman.getSupirId());
         payload.put("mandorId", pengiriman.getMandorId());
+        payload.put("kebunId", pengiriman.getKebunId());
         payload.put("userId", pengiriman.getMandorId());
         payload.put("quantityKg", BigDecimal.valueOf(recognizedKg));
         payload.put("recognizedKg", recognizedKg);
@@ -93,6 +101,21 @@ public class SpringPengirimanEventPublisher implements PengirimanEventPublisher 
         payload.put("panenIds", pengiriman.getPanenIds());
         payload.put("description", "Pengiriman diakui admin untuk " + recognizedKg + " Kg");
         payload.put("title", "Pengiriman disetujui admin");
+        return payload;
+    }
+
+    private Map<String, Object> buildShipmentPayload(PengirimanTibaEvent event, int totalKg, String title) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("pengirimanId", event.pengirimanId().toString());
+        payload.put("supirId", event.supirId());
+        payload.put("mandorId", event.mandorId());
+        payload.put("userId", event.supirId());
+        payload.put("quantityKg", BigDecimal.valueOf(totalKg));
+        payload.put("totalKg", totalKg);
+        payload.put("panenIds", event.panenIds());
+        payload.put("description", title + " dengan total " + totalKg + " Kg");
+        payload.put("title", title);
+        payload.put("timestamp", event.timestamp());
         return payload;
     }
 }

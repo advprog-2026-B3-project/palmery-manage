@@ -3,6 +3,7 @@ package id.ac.ui.cs.advprog.palmerymanage.service;
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedAdminEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanApprovedMandorEvent;
 import id.ac.ui.cs.advprog.palmerymanage.event.PengirimanTibaEvent;
+import id.ac.ui.cs.advprog.palmerymanage.model.AdminApprovalStatus;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
 import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanEventPublisher;
 import id.ac.ui.cs.advprog.palmerymanage.pengiriman.SpringPengirimanEventPublisher;
@@ -12,12 +13,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -26,10 +30,10 @@ import static org.mockito.Mockito.verify;
 class PengirimanEventPublisherTest {
 
     @Mock
-    private DomainEventPublisher domainEventPublisher;
+    private ApplicationEventPublisher publisher;
 
     @Mock
-    private id.ac.ui.cs.advprog.palmerymanage.event.DomainEventPublisher domainEventPublisher;
+    private DomainEventPublisher domainEventPublisher;
 
     private PengirimanEventPublisher pengirimanEventPublisher;
 
@@ -43,6 +47,7 @@ class PengirimanEventPublisherTest {
         pengiriman.setId(UUID.randomUUID());
         pengiriman.setSupirId("DRV-1");
         pengiriman.setMandorId("MDR-1");
+        pengiriman.setKebunId("KEBUN-1");
         pengiriman.setTotalKg(300);
         pengiriman.setPanenIds(List.of("PAN-1", "PAN-2"));
     }
@@ -51,6 +56,9 @@ class PengirimanEventPublisherTest {
     void publishesPengirimanTibaEvent() {
         pengirimanEventPublisher.publishPengirimanTiba(pengiriman);
 
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(publisher).publishEvent(captor.capture());
+        assertTrue(captor.getValue() instanceof PengirimanTibaEvent);
         verify(domainEventPublisher).publish(eq("PengirimanTiba"), anyMap());
     }
 
@@ -110,5 +118,21 @@ class PengirimanEventPublisherTest {
         assertEquals(pengiriman.getPanenIds(), payload.get("panenIds"));
         assertEquals("Pengiriman diakui admin untuk 250 Kg", payload.get("description"));
         assertEquals("Pengiriman disetujui admin", payload.get("title"));
+    }
+
+    @Test
+    void publishesPengirimanPartiallyApprovedAdminEventWhenStatusIsPartial() {
+        pengiriman.setAdminApprovalStatus(AdminApprovalStatus.PARTIALLY_APPROVED);
+
+        pengirimanEventPublisher.publishPengirimanApprovedAdmin(pengiriman, 250);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> payloadCaptor =
+            ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+        verify(domainEventPublisher).publish(eq("PENGIRIMAN_PARTIALLY_APPROVED_BY_ADMIN"), payloadCaptor.capture());
+
+        Map<String, Object> payload = payloadCaptor.getValue();
+        assertEquals(250, payload.get("acceptedKgByAdmin"));
+        assertEquals(pengiriman.getMandorId(), payload.get("userId"));
     }
 }

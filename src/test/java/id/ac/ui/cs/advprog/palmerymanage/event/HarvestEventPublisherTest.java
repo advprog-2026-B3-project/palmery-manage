@@ -1,5 +1,7 @@
 package id.ac.ui.cs.advprog.palmerymanage.event;
 
+import id.ac.ui.cs.advprog.palmerymanage.service.DomainEventPublisher;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,7 +23,7 @@ import static org.mockito.Mockito.*;
 class HarvestEventPublisherTest {
 
     @Mock
-    private id.ac.ui.cs.advprog.palmerymanage.service.DomainEventPublisher domainEventPublisher;
+    private RabbitTemplate rabbitTemplate;
 
     @Mock
     private DomainEventPublisher domainEventPublisher;
