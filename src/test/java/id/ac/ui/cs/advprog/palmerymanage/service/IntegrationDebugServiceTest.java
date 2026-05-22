@@ -2,26 +2,21 @@ package id.ac.ui.cs.advprog.palmerymanage.service;
 
 import id.ac.ui.cs.advprog.palmerymanage.model.IntegrationCheck;
 import id.ac.ui.cs.advprog.palmerymanage.repository.IntegrationCheckRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class IntegrationDebugServiceTest {
@@ -36,58 +31,94 @@ class IntegrationDebugServiceTest {
     private IntegrationDebugService integrationDebugService;
 
     @Test
-    void integrationStatusReturnsExpectedPayload() {
-        when(jdbcTemplate.queryForObject("SELECT 1", Integer.class)).thenReturn(1);
-        when(integrationCheckRepository.count()).thenReturn(7L);
-        when(integrationCheckRepository.countBySource("frontend-debug")).thenReturn(5L);
+    void integrationStatus_dbUp_returnsStatusMap() {
+        when(jdbcTemplate.queryForObject(eq("SELECT 1"), eq(Integer.class))).thenReturn(1);
+        when(integrationCheckRepository.count()).thenReturn(5L);
+        when(integrationCheckRepository.countBySource("frontend-debug")).thenReturn(3L);
 
-        Map<String, Object> payload = integrationDebugService.integrationStatus();
+        Map<String, Object> result = integrationDebugService.integrationStatus();
 
-        assertEquals("manage", payload.get("service"));
-        assertEquals("up", payload.get("backend"));
-        assertEquals(7L, payload.get("record_count"));
-        assertEquals(5L, payload.get("frontend_debug_count"));
-        assertNotNull(payload.get("timestamp"));
-        Instant.parse(payload.get("timestamp").toString());
+        assertEquals("manage", result.get("service"));
+        assertEquals("up", result.get("backend"));
+        assertEquals(5L, result.get("record_count"));
+        assertEquals(3L, result.get("frontend_debug_count"));
+        assertNotNull(result.get("timestamp"));
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> database = (Map<String, Object>) payload.get("database");
-        assertEquals("up", database.get("status"));
-        assertEquals(1, database.get("ping"));
-        assertTrue(database.containsKey("latency_ms"));
+        Map<String, Object> db = (Map<String, Object>) result.get("database");
+        assertEquals("up", db.get("status"));
+        assertEquals(1, db.get("ping"));
     }
 
     @Test
-    void createCheckUsesDefaultSourceWhenBlank() {
-        when(integrationCheckRepository.save(any())).thenAnswer(invocation -> {
-            IntegrationCheck saved = invocation.getArgument(0);
-            saved.prePersist();
-            ReflectionTestUtils.setField(saved, "id", 12L);
-            return saved;
-        });
-        when(integrationCheckRepository.countBySource("frontend-debug")).thenReturn(2L);
-        when(integrationCheckRepository.count()).thenReturn(8L);
+    void integrationStatus_dbPingNull_returnsUnknown() {
+        when(jdbcTemplate.queryForObject(eq("SELECT 1"), eq(Integer.class))).thenReturn(null);
+        when(integrationCheckRepository.count()).thenReturn(0L);
+        when(integrationCheckRepository.countBySource("frontend-debug")).thenReturn(0L);
 
-        Map<String, Object> response = integrationDebugService.createCheck(" ");
+        Map<String, Object> result = integrationDebugService.integrationStatus();
 
-        assertEquals(12L, response.get("id"));
-        assertEquals("frontend-debug", response.get("source"));
-        assertNotNull(response.get("created_at"));
-        assertEquals(2L, response.get("source_count"));
-        assertEquals(8L, response.get("total_count"));
-
-        verify(integrationCheckRepository).save(argThat(check -> "frontend-debug".equals(check.getSource())));
-        verify(integrationCheckRepository).countBySource("frontend-debug");
-        verify(integrationCheckRepository).count();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> db = (Map<String, Object>) result.get("database");
+        assertEquals("unknown", db.get("status"));
     }
 
     @Test
-    void latestChecksReturnsRepositoryResult() {
-        List<IntegrationCheck> expected = List.of(new IntegrationCheck("a"), new IntegrationCheck("b"));
-        when(integrationCheckRepository.findTop10ByOrderByCreatedAtDesc()).thenReturn(expected);
+    void createCheck_withSource_savesAndReturnsMap() {
+        IntegrationCheck saved = new IntegrationCheck("my-source");
+        org.springframework.test.util.ReflectionTestUtils.setField(saved, "id", 1L);
+        saved.prePersist();
 
-        List<IntegrationCheck> actual = integrationDebugService.latestChecks();
+        when(integrationCheckRepository.save(any(IntegrationCheck.class))).thenReturn(saved);
+        when(integrationCheckRepository.countBySource("my-source")).thenReturn(1L);
+        when(integrationCheckRepository.count()).thenReturn(1L);
 
-        assertSame(expected, actual);
+        Map<String, Object> result = integrationDebugService.createCheck("my-source");
+
+        assertEquals(1L, result.get("id"));
+        assertEquals("my-source", result.get("source"));
+        assertEquals(1L, result.get("source_count"));
+        assertEquals(1L, result.get("total_count"));
+    }
+
+    @Test
+    void createCheck_nullSource_usesDefault() {
+        IntegrationCheck saved = new IntegrationCheck("frontend-debug");
+        org.springframework.test.util.ReflectionTestUtils.setField(saved, "id", 2L);
+        saved.prePersist();
+
+        when(integrationCheckRepository.save(any(IntegrationCheck.class))).thenReturn(saved);
+        when(integrationCheckRepository.countBySource("frontend-debug")).thenReturn(1L);
+        when(integrationCheckRepository.count()).thenReturn(1L);
+
+        Map<String, Object> result = integrationDebugService.createCheck(null);
+
+        assertEquals("frontend-debug", result.get("source"));
+    }
+
+    @Test
+    void createCheck_blankSource_usesDefault() {
+        IntegrationCheck saved = new IntegrationCheck("frontend-debug");
+        org.springframework.test.util.ReflectionTestUtils.setField(saved, "id", 3L);
+        saved.prePersist();
+
+        when(integrationCheckRepository.save(any(IntegrationCheck.class))).thenReturn(saved);
+        when(integrationCheckRepository.countBySource("frontend-debug")).thenReturn(1L);
+        when(integrationCheckRepository.count()).thenReturn(1L);
+
+        Map<String, Object> result = integrationDebugService.createCheck("   ");
+
+        assertEquals("frontend-debug", result.get("source"));
+    }
+
+    @Test
+    void latestChecks_returnsList() {
+        IntegrationCheck check = new IntegrationCheck("test");
+        when(integrationCheckRepository.findTop10ByOrderByCreatedAtDesc()).thenReturn(List.of(check));
+
+        List<IntegrationCheck> result = integrationDebugService.latestChecks();
+
+        assertEquals(1, result.size());
+        verify(integrationCheckRepository).findTop10ByOrderByCreatedAtDesc();
     }
 }

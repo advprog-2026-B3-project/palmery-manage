@@ -1,0 +1,3 @@
+-- Seed data for development
+-- Note: This file runs on startup when spring.sql.init.mode=always
+-- The current JPA entities handle their own schema via ddl-auto or Flyway

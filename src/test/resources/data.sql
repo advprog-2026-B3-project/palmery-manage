@@ -1,0 +1,2 @@
+-- Test seed data
+-- Tables are auto-created by JPA (ddl-auto=create-drop) in test profile
