@@ -36,9 +36,6 @@ public class SecurityConfig {
                         // Public: health check / actuator
                         .requestMatchers("/actuator/**").permitAll()
 
-                        // Public: photo proxy (browser <img> tag tidak mengirim Authorization header)
-                        .requestMatchers(HttpMethod.GET, "/api/harvests/photos/**").permitAll()
-
                         // GET kebun: ADMIN & MANDOR
                         .requestMatchers(HttpMethod.GET, "/kebun", "/kebun/**").hasAnyRole("ADMIN", "MANDOR")
 

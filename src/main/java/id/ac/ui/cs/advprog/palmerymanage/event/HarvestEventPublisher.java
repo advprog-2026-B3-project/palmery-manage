@@ -26,22 +26,12 @@ public class HarvestEventPublisher {
     }
 
     public void publishHarvestApproved(@NonNull HarvestApprovedEvent event) {
-        try {
-            rabbitTemplate.convertAndSend(exchange, routingKeyApproved, event);
-            log.info("[RabbitMQ] HarvestApproved published: harvestId={}", event.harvestId());
-        } catch (Exception e) {
-            log.warn("[RabbitMQ] Failed to publish HarvestApproved (broker likely unavailable): harvestId={}, error={}",
-                    event.harvestId(), e.getMessage());
-        }
+        rabbitTemplate.convertAndSend(exchange, routingKeyApproved, event);
+        log.info("[RabbitMQ] HarvestApproved published: harvestId={}", event.harvestId());
     }
 
     public void publishHarvestSubmitted(@NonNull HarvestSubmittedEvent event) {
-        try {
-            rabbitTemplate.convertAndSend(exchange, routingKeySubmitted, event);
-            log.info("[RabbitMQ] HarvestSubmitted published: harvestId={}", event.harvestId());
-        } catch (Exception e) {
-            log.warn("[RabbitMQ] Failed to publish HarvestSubmitted (broker likely unavailable): harvestId={}, error={}",
-                    event.harvestId(), e.getMessage());
-        }
+        rabbitTemplate.convertAndSend(exchange, routingKeySubmitted, event);
+        log.info("[RabbitMQ] HarvestSubmitted published: harvestId={}", event.harvestId());
     }
 }

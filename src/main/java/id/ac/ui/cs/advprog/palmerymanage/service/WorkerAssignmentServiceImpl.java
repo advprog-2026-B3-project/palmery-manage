@@ -64,15 +64,6 @@ public class WorkerAssignmentServiceImpl implements WorkerAssignmentService {
                 .orElseThrow(() -> new IllegalArgumentException("Penempatan Buruh tidak ditemukan"));
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public boolean isWorkerUnderMandor(UUID mandorId, UUID workerId) {
-        if (mandorId == null || workerId == null) return false;
-        return workerAssignmentRepository.findById(workerId)
-                .map(assignment -> mandorId.equals(assignment.getMandorId()))
-                .orElse(false);
-    }
-
     private void ensureMandorHasPlantation(UUID mandorId) {
         boolean assigned = !plantationAssignmentRepository
                 .findByPersonnelIdAndRole(mandorId, PlantationAssignment.PersonnelRole.MANDOR)

@@ -26,8 +26,5 @@ public class BasicDataValidator implements HarvestValidator {
         if (request.getNotes() == null || request.getNotes().trim().isEmpty()) {
             throw new IllegalArgumentException("Catatan (notes) tidak boleh kosong");
         }
-        if (request.getPhotos() == null || request.getPhotos().isEmpty()) {
-            throw new IllegalArgumentException("Foto bukti panen wajib diunggah minimal 1 foto");
-        }
     }
 }
