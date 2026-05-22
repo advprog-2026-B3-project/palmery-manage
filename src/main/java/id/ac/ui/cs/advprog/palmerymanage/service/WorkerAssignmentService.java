@@ -16,6 +16,4 @@ public interface WorkerAssignmentService {
     List<WorkerAssignmentResponseDto> getWorkersForMandor(UUID mandorId);
 
     WorkerAssignmentResponseDto getAssignmentByWorker(UUID workerId);
-
-    boolean isWorkerUnderMandor(UUID mandorId, UUID workerId);
 }
