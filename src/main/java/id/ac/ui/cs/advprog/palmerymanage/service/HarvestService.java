@@ -12,6 +12,7 @@ import id.ac.ui.cs.advprog.palmerymanage.model.PlantationAssignment;
 import id.ac.ui.cs.advprog.palmerymanage.model.WorkerAssignment;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationAssignmentRepository;
+import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.WorkerAssignmentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +44,7 @@ public class HarvestService {
     private final List<HarvestValidator> validators;
     private final WorkerAssignmentRepository workerAssignmentRepository;
     private final PlantationAssignmentRepository plantationAssignmentRepository;
+    private final PlantationRepository plantationRepository;
 
     @Autowired
     public HarvestService(HarvestResultRepository harvestResultRepository,
@@ -51,7 +53,8 @@ public class HarvestService {
                           HarvestEventPublisher eventPublisher,
                           List<HarvestValidator> validators,
                           WorkerAssignmentRepository workerAssignmentRepository,
-                          PlantationAssignmentRepository plantationAssignmentRepository) {
+                          PlantationAssignmentRepository plantationAssignmentRepository,
+                          PlantationRepository plantationRepository) {
         this.harvestResultRepository = harvestResultRepository;
         this.plantationService = plantationService;
         this.plantationValidationService = plantationValidationService;
@@ -59,6 +62,7 @@ public class HarvestService {
         this.validators = validators;
         this.workerAssignmentRepository = workerAssignmentRepository;
         this.plantationAssignmentRepository = plantationAssignmentRepository;
+        this.plantationRepository = plantationRepository;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -69,8 +73,8 @@ public class HarvestService {
         }
         validateWorkerSubmissionScope(workerId, request);
 
-        Plantation plantation = new Plantation();
-        plantation.setId(request.getPlantationId());
+        Plantation plantation = plantationRepository.findById(request.getPlantationId())
+                .orElseThrow(() -> new IllegalArgumentException("Kebun tidak ditemukan"));
 
         HarvestResult result = HarvestResult.builder()
                 .workerId(workerId)
@@ -168,7 +172,7 @@ public class HarvestService {
     }
 
     public HarvestResult getHarvestById(UUID harvestId) {
-        return harvestResultRepository.findById(harvestId)
+        return harvestResultRepository.findWithPhotosById(harvestId)
                 .orElseThrow(() -> new IllegalArgumentException("Laporan Harvest tidak ditemukan"));
     }
 

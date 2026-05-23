@@ -3,11 +3,14 @@ package id.ac.ui.cs.advprog.palmerymanage.controller;
 import id.ac.ui.cs.advprog.palmerymanage.dto.HarvestRequestDto;
 import id.ac.ui.cs.advprog.palmerymanage.dto.HarvestResponseDto;
 import id.ac.ui.cs.advprog.palmerymanage.dto.ValidationRequestDto;
+import id.ac.ui.cs.advprog.palmerymanage.model.HarvestPhoto;
 import id.ac.ui.cs.advprog.palmerymanage.model.HarvestResult;
 import id.ac.ui.cs.advprog.palmerymanage.service.HarvestService;
+import org.hibernate.Hibernate;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -40,25 +43,36 @@ public class HarvestController {
                 .rejectionReason(result.getRejectionReason())
                 .validatedAt(result.getValidatedAt())
                 .createdAt(result.getCreatedAt())
-                .photos(result.getPhotos() == null ? new java.util.ArrayList<>() : result.getPhotos().stream().map(photo -> 
-                        HarvestResponseDto.PhotoDto.builder()
-                                .id(photo.getId())
-                                .url(photo.getUrl())
-                                .filename(photo.getFilename())
-                                .sizeBytes(photo.getSizeBytes())
-                                .uploadedAt(photo.getUploadedAt())
-                                .build()
-                ).collect(Collectors.toList()))
+                .photos(mapPhotoDtos(result))
                 .build();
+    }
+
+    private List<HarvestResponseDto.PhotoDto> mapPhotoDtos(HarvestResult result) {
+        List<HarvestPhoto> photos = result.getPhotos();
+        if (photos == null || !Hibernate.isInitialized(photos)) {
+            return List.of();
+        }
+        return photos.stream().map(photo ->
+                HarvestResponseDto.PhotoDto.builder()
+                        .id(photo.getId())
+                        .url(photo.getUrl())
+                        .filename(photo.getFilename())
+                        .sizeBytes(photo.getSizeBytes())
+                        .uploadedAt(photo.getUploadedAt())
+                        .build()
+        ).collect(Collectors.toList());
     }
 
     //Endpoint Buruh Submit Panen
     @PostMapping
     public ResponseEntity<?> submitHarvest(
-            @RequestHeader(value = "X-User-Id", required = true) UUID workerId,
-            @RequestHeader(value = "X-User-Role", required = true) String role,
+            Authentication authentication,
+            @RequestHeader(value = "X-User-Id", required = false) UUID workerIdHeader,
+            @RequestHeader(value = "X-User-Role", required = false) String roleHeader,
             @RequestBody HarvestRequestDto request) {
         try {
+            UUID workerId = resolveRequiredUserId(authentication, workerIdHeader, "Buruh");
+            String role = resolveRole(authentication, roleHeader);
             if (!"BURUH".equalsIgnoreCase(role)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Akses ditolak: Hanya Buruh yang bisa mencatat hasil panen.");
             }
@@ -74,11 +88,14 @@ public class HarvestController {
     //Endpoint untuk Mandor  validasi Panen
     @PatchMapping("/{id}/validate")
     public ResponseEntity<?> validateHarvest(
-            @RequestHeader(value = "X-User-Id", required = true) UUID mandorId,
-            @RequestHeader(value = "X-User-Role", required = true) String role,
+            Authentication authentication,
+            @RequestHeader(value = "X-User-Id", required = false) UUID mandorIdHeader,
+            @RequestHeader(value = "X-User-Role", required = false) String roleHeader,
             @PathVariable("id") UUID id,
             @RequestBody ValidationRequestDto request) {
         try {
+            UUID mandorId = resolveRequiredUserId(authentication, mandorIdHeader, "Mandor");
+            String role = resolveRole(authentication, roleHeader);
             if (!"MANDOR".equalsIgnoreCase(role)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Akses ditolak: Hanya Mandor yang bisa memvalidasi panen.");
             }
@@ -92,12 +109,16 @@ public class HarvestController {
     // 3. Endpoint Riwayat Buruh Pribadi
     @GetMapping("/me")
     public ResponseEntity<?> getMyHarvestHistory(
-            @RequestHeader(value = "X-User-Id", required = true) UUID workerId,
-            @RequestHeader(value = "X-User-Role", required = true) String role,
+            Authentication authentication,
+            @RequestHeader(value = "X-User-Id", required = false) UUID workerIdHeader,
+            @RequestHeader(value = "X-User-Role", required = false) String roleHeader,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate start,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate end,
             @RequestParam(required = false) String status) {
         try {
+            UUID workerId = resolveRequiredUserId(authentication, workerIdHeader, "Buruh");
+            String role = resolveRole(authentication, roleHeader);
+
             if (!"BURUH".equalsIgnoreCase(role)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Akses ditolak: Hanya Buruh yang bisa melihat riwayat pribadinya.");
             }
@@ -108,14 +129,48 @@ public class HarvestController {
         }
     }
 
+    private UUID resolveUserId(Authentication authentication, UUID userIdHeader) {
+        if (authentication != null && authentication.getName() != null && !authentication.getName().isBlank()) {
+            try {
+                return UUID.fromString(authentication.getName());
+            } catch (IllegalArgumentException ignored) {
+                // Fall through to the legacy header fallback below.
+            }
+        }
+        return userIdHeader;
+    }
+
+    private UUID resolveRequiredUserId(Authentication authentication, UUID userIdHeader, String label) {
+        UUID userId = resolveUserId(authentication, userIdHeader);
+        if (userId == null) {
+            throw new IllegalArgumentException(label + " ID tidak ditemukan");
+        }
+        return userId;
+    }
+
+    private String resolveRole(Authentication authentication, String roleHeader) {
+        if (authentication != null && authentication.getAuthorities() != null) {
+            return authentication.getAuthorities().stream()
+                    .map(authority -> authority.getAuthority())
+                    .filter(authority -> authority != null && authority.startsWith("ROLE_"))
+                    .map(authority -> authority.substring("ROLE_".length()))
+                    .findFirst()
+                    .orElse(roleHeader);
+        }
+        return roleHeader;
+    }
+
     // 4. Endpoint Daftar Panen untuk Mandor (Bisa filter tanggal & workerId)
     @GetMapping
     public ResponseEntity<?> getAllHarvestsForMandor(
-            @RequestHeader(value = "X-User-Id", required = true) UUID mandorId,
-            @RequestHeader(value = "X-User-Role", required = true) String role,
+            Authentication authentication,
+            @RequestHeader(value = "X-User-Id", required = false) UUID mandorIdHeader,
+            @RequestHeader(value = "X-User-Role", required = false) String roleHeader,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(required = false) UUID workerId) {
         try {
+            UUID mandorId = resolveRequiredUserId(authentication, mandorIdHeader, "Mandor");
+            String role = resolveRole(authentication, roleHeader);
             if (!"MANDOR".equalsIgnoreCase(role)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Akses ditolak: Hanya Mandor yang bisa melihat semua data panen.");
             }
@@ -140,9 +195,11 @@ public class HarvestController {
     //endpoint mandor untuk melihat 1 buruh
     @GetMapping("/worker/{workerId}")
     public ResponseEntity<?> getHarvestsByWorkerId(
-            @RequestHeader("X-User-Role") String role,
+            Authentication authentication,
+            @RequestHeader(value = "X-User-Role", required = false) String roleHeader,
             @PathVariable("workerId") UUID workerId) {
         try {
+            String role = resolveRole(authentication, roleHeader);
             if (!"MANDOR".equalsIgnoreCase(role) && !"ADMIN".equalsIgnoreCase(role)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body("Akses ditolak.");

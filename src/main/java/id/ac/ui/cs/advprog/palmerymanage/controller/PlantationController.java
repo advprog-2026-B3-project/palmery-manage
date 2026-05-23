@@ -20,10 +20,10 @@ public class PlantationController {
 
     /**
      * GET /kebun?name=...&code=...
-     * Accessible by ADMIN and MANDOR (read-only)
+     * Accessible by ADMIN, MANDOR, and BURUH (read-only)
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANDOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANDOR', 'BURUH')")
     public ResponseEntity<List<PlantationSummaryDto>> getAllPlantations(
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String code) {
@@ -32,10 +32,10 @@ public class PlantationController {
 
     /**
      * GET /kebun/:id
-     * Accessible by ADMIN and MANDOR (read-only)
+     * Accessible by ADMIN, MANDOR, and BURUH (read-only)
      */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANDOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANDOR', 'BURUH')")
     public ResponseEntity<PlantationResponseDto> getPlantationById(@PathVariable UUID id) {
         return ResponseEntity.ok(plantationService.getPlantationById(id));
     }

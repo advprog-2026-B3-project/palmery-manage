@@ -34,7 +34,7 @@ Salin dan samakan **JWT secret** serta **service client** dengan `palmery-auth`:
 
 ```bash
 # palmery-manage — gunakan di application-dev.properties atau env
-JWT_SECRET=replace-with-at-least-32-characters-secret
+JWT_SECRET=replace-this-secret-with-at-least-32-characters
 AUTH_API_BASE_URL=http://localhost:8080
 AUTH_SERVICE_CLIENT_ID=palmery-internal-service
 AUTH_SERVICE_CLIENT_SECRET=replace-with-service-client-secret
@@ -59,7 +59,8 @@ cd palmery-manage
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
 
-Health check: http://localhost:8081/actuator/health (jika actuator diaktifkan) atau uji `GET http://localhost:8081/api/mandor/panen/siap-angkut`.
+Health check: http://localhost:8081/actuator/health atau uji `GET http://localhost:8081/api/mandor/panen/siap-angkut`.
+Metrik pengiriman tersedia di `/actuator/metrics` dengan prefix `palmery.pengiriman.*`.
 
 ## Menjalankan stack lengkap (terminal terpisah)
 

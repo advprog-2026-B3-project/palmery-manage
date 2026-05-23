@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 @Slf4j
 @Service
@@ -49,19 +50,22 @@ public class PengirimanService {
     private final PengirimanEventPublisher eventPublisher;
     private final PengirimanStatusTransitionPolicy statusTransitionPolicy;
     private final DriverProfileLookup driverProfileLookup;
+    private final PengirimanMonitoringService monitoringService;
 
     public PengirimanService(PengirimanRepository pengirimanRepository,
                              HarvestResultRepository harvestResultRepository,
                              PlantationAssignmentRepository plantationAssignmentRepository,
                              PengirimanEventPublisher eventPublisher,
                              PengirimanStatusTransitionPolicy statusTransitionPolicy,
-                             DriverProfileLookup driverProfileLookup) {
+                             DriverProfileLookup driverProfileLookup,
+                             PengirimanMonitoringService monitoringService) {
         this.pengirimanRepository = pengirimanRepository;
         this.harvestResultRepository = harvestResultRepository;
         this.plantationAssignmentRepository = plantationAssignmentRepository;
         this.eventPublisher = eventPublisher;
         this.statusTransitionPolicy = statusTransitionPolicy;
         this.driverProfileLookup = driverProfileLookup;
+        this.monitoringService = monitoringService;
     }
 
     // ─── Supir list for Mandor ────────────────────────────────────────────────
@@ -120,6 +124,10 @@ public class PengirimanService {
     // ─── Create Pengiriman (Mandor) ───────────────────────────────────────────
 
     public Pengiriman createPengiriman(String mandorId, CreatePengirimanRequest request) {
+        return profile("create", () -> createPengirimanInternal(mandorId, request));
+    }
+
+    private Pengiriman createPengirimanInternal(String mandorId, CreatePengirimanRequest request) {
         if (mandorId == null || mandorId.isBlank()) {
             throw new BadRequestException("Mandor tidak ditemukan");
         }
@@ -206,12 +214,18 @@ public class PengirimanService {
 
         log.info("Pengiriman created: supirId={}, mandorId={}, totalKg={}, panenCount={}",
                 request.supirId(), mandorId, total, panenList.size());
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        monitoringService.recordCreated(saved);
+        return saved;
     }
 
     // ─── Supir: update delivery status ────────────────────────────────────────
 
     public Pengiriman updateStatusSupir(String supirId, UUID id, PengirimanStatus target) {
+        return profile("status_update", () -> updateStatusSupirInternal(supirId, id, target));
+    }
+
+    private Pengiriman updateStatusSupirInternal(String supirId, UUID id, PengirimanStatus target) {
         Pengiriman pengiriman = pengirimanRepository.findById(id)
                 .orElseThrow(() -> new BadRequestException("Pengiriman tidak ditemukan"));
 
@@ -230,12 +244,18 @@ public class PengirimanService {
             eventPublisher.publishPengirimanTiba(pengiriman);
         }
 
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        monitoringService.recordStatusTransition(current, target);
+        return saved;
     }
 
     // ─── Mandor: approve/reject after TIBA_DI_TUJUAN ──────────────────────────
 
     public Pengiriman approveByMandor(String mandorId, UUID id) {
+        return profile("mandor_approve", () -> approveByMandorInternal(mandorId, id));
+    }
+
+    private Pengiriman approveByMandorInternal(String mandorId, UUID id) {
         Pengiriman pengiriman = requireOwnedByMandor(mandorId, id);
         if (pengiriman.getStatus() != PengirimanStatus.TIBA_DI_TUJUAN) {
             throw new BadRequestException("Pengiriman belum tiba di tujuan");
@@ -249,10 +269,16 @@ public class PengirimanService {
         eventPublisher.publishPengirimanApprovedMandor(pengiriman);
 
         log.info("Pengiriman {} approved by mandor {}", id, mandorId);
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        monitoringService.recordMandorDecision(saved.getMandorApprovalStatus());
+        return saved;
     }
 
     public Pengiriman rejectByMandor(String mandorId, UUID id, String reason) {
+        return profile("mandor_reject", () -> rejectByMandorInternal(mandorId, id, reason));
+    }
+
+    private Pengiriman rejectByMandorInternal(String mandorId, UUID id, String reason) {
         if (reason == null || reason.isBlank()) {
             throw new BadRequestException("Alasan penolakan wajib diisi");
         }
@@ -269,7 +295,9 @@ public class PengirimanService {
         refreshHarvestAvailabilityAfterMandorDecision(pengiriman, false);
 
         log.info("Pengiriman {} rejected by mandor {}: {}", id, mandorId, reason);
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        monitoringService.recordMandorDecision(saved.getMandorApprovalStatus());
+        return saved;
     }
 
     // ─── Admin: validate after Mandor approves ────────────────────────────────
@@ -287,6 +315,10 @@ public class PengirimanService {
     }
 
     public Pengiriman approveByAdmin(UUID id) {
+        return profile("admin_approve", () -> approveByAdminInternal(id));
+    }
+
+    private Pengiriman approveByAdminInternal(UUID id) {
         Pengiriman pengiriman = requirePendingAdminReview(id);
 
         pengiriman.setAdminApprovalStatus(AdminApprovalStatus.APPROVED);
@@ -295,10 +327,16 @@ public class PengirimanService {
         eventPublisher.publishPengirimanApprovedAdmin(pengiriman, pengiriman.getTotalKg());
 
         log.info("Pengiriman {} fully approved by admin, acceptedKg={}", id, pengiriman.getTotalKg());
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        monitoringService.recordAdminDecision(saved.getAdminApprovalStatus());
+        return saved;
     }
 
     public Pengiriman partialRejectByAdmin(UUID id, int acceptedKg, String reason) {
+        return profile("admin_partial_approve", () -> partialRejectByAdminInternal(id, acceptedKg, reason));
+    }
+
+    private Pengiriman partialRejectByAdminInternal(UUID id, int acceptedKg, String reason) {
         if (reason == null || reason.isBlank()) {
             throw new BadRequestException("Alasan penolakan wajib diisi");
         }
@@ -315,10 +353,16 @@ public class PengirimanService {
         eventPublisher.publishPengirimanApprovedAdmin(pengiriman, acceptedKg);
 
         log.info("Pengiriman {} partially approved by admin, acceptedKg={}/{}", id, acceptedKg, pengiriman.getTotalKg());
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        monitoringService.recordAdminDecision(saved.getAdminApprovalStatus());
+        return saved;
     }
 
     public Pengiriman rejectByAdmin(UUID id, String reason) {
+        return profile("admin_reject", () -> rejectByAdminInternal(id, reason));
+    }
+
+    private Pengiriman rejectByAdminInternal(UUID id, String reason) {
         if (reason == null || reason.isBlank()) {
             throw new BadRequestException("Alasan penolakan wajib diisi");
         }
@@ -328,7 +372,9 @@ public class PengirimanService {
         pengiriman.setRejectedReason(reason.trim());
 
         log.info("Pengiriman {} rejected by admin: {}", id, reason);
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        monitoringService.recordAdminDecision(saved.getAdminApprovalStatus());
+        return saved;
     }
 
     // ─── Queries ──────────────────────────────────────────────────────────────
@@ -482,5 +528,17 @@ public class PengirimanService {
 
     private int resolveOriginalKg(HarvestResult harvest) {
         return harvest.getKgHarvested() == null ? 0 : Math.max(0, Math.round(harvest.getKgHarvested()));
+    }
+
+    private <T> T profile(String operation, Supplier<T> action) {
+        long startedAtNanos = System.nanoTime();
+        try {
+            T result = action.get();
+            monitoringService.recordOperation(operation, startedAtNanos, true);
+            return result;
+        } catch (RuntimeException ex) {
+            monitoringService.recordOperation(operation, startedAtNanos, false);
+            throw ex;
+        }
     }
 }
