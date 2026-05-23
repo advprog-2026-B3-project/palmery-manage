@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Component
@@ -47,10 +48,11 @@ public class SpringPengirimanEventPublisher implements PengirimanEventPublisher 
     }
 
     private Map<String, Object> pengirimanApprovedMandorPayload(Pengiriman pengiriman) {
-        Map<String, Object> payload = new HashMap<>();
+        Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("pengirimanId", pengiriman.getId().toString());
         payload.put("supirId", pengiriman.getSupirId());
         payload.put("mandorId", pengiriman.getMandorId());
+        payload.put("kebunId", pengiriman.getKebunId());
         payload.put("userId", pengiriman.getSupirId());
         payload.put("quantityKg", BigDecimal.valueOf(pengiriman.getTotalKg()));
         payload.put("totalKg", pengiriman.getTotalKg());
@@ -61,10 +63,11 @@ public class SpringPengirimanEventPublisher implements PengirimanEventPublisher 
     }
 
     private Map<String, Object> pengirimanApprovedAdminPayload(Pengiriman pengiriman, int recognizedKg) {
-        Map<String, Object> payload = new HashMap<>();
+        Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("pengirimanId", pengiriman.getId().toString());
         payload.put("supirId", pengiriman.getSupirId());
         payload.put("mandorId", pengiriman.getMandorId());
+        payload.put("kebunId", pengiriman.getKebunId());
         payload.put("userId", pengiriman.getMandorId());
         payload.put("quantityKg", BigDecimal.valueOf(recognizedKg));
         payload.put("recognizedKg", recognizedKg);

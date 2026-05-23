@@ -1,5 +1,6 @@
 package id.ac.ui.cs.advprog.palmerymanage.service;
 
+import id.ac.ui.cs.advprog.palmerymanage.model.AdminApprovalStatus;
 import id.ac.ui.cs.advprog.palmerymanage.model.Pengiriman;
 import id.ac.ui.cs.advprog.palmerymanage.pengiriman.PengirimanEventPublisher;
 import id.ac.ui.cs.advprog.palmerymanage.pengiriman.SpringPengirimanEventPublisher;
@@ -38,6 +39,7 @@ class PengirimanEventPublisherTest {
         pengiriman.setId(UUID.randomUUID());
         pengiriman.setSupirId("DRV-1");
         pengiriman.setMandorId("MDR-1");
+        pengiriman.setKebunId("KEBUN-1");
         pengiriman.setTotalKg(300);
         pengiriman.setPanenIds(List.of("PAN-1", "PAN-2"));
     }
@@ -105,5 +107,21 @@ class PengirimanEventPublisherTest {
         assertEquals(pengiriman.getPanenIds(), payload.get("panenIds"));
         assertEquals("Pengiriman diakui admin untuk 250 Kg", payload.get("description"));
         assertEquals("Pengiriman disetujui admin", payload.get("title"));
+    }
+
+    @Test
+    void publishesPengirimanPartiallyApprovedAdminEventWhenStatusIsPartial() {
+        pengiriman.setAdminApprovalStatus(AdminApprovalStatus.PARTIALLY_APPROVED);
+
+        pengirimanEventPublisher.publishPengirimanApprovedAdmin(pengiriman, 250);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> payloadCaptor =
+            ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+        verify(domainEventPublisher).publish(eq("PENGIRIMAN_PARTIALLY_APPROVED_BY_ADMIN"), payloadCaptor.capture());
+
+        Map<String, Object> payload = payloadCaptor.getValue();
+        assertEquals(250, payload.get("acceptedKgByAdmin"));
+        assertEquals(pengiriman.getMandorId(), payload.get("userId"));
     }
 }

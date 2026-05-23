@@ -11,6 +11,7 @@ import id.ac.ui.cs.advprog.palmerymanage.model.WorkerAssignment;
 import id.ac.ui.cs.advprog.palmerymanage.model.Plantation;
 import id.ac.ui.cs.advprog.palmerymanage.repository.HarvestResultRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationAssignmentRepository;
+import id.ac.ui.cs.advprog.palmerymanage.repository.PlantationRepository;
 import id.ac.ui.cs.advprog.palmerymanage.repository.WorkerAssignmentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,9 @@ class HarvestServiceTest {
     private PlantationAssignmentRepository plantationAssignmentRepository;
 
     @Mock
+    private PlantationRepository plantationRepository;
+
+    @Mock
     private id.ac.ui.cs.advprog.palmerymanage.service.validation.HarvestValidator validator;
 
     private HarvestService harvestService;
@@ -75,7 +79,8 @@ class HarvestServiceTest {
                 eventPublisher,
                 List.of(validator),
                 workerAssignmentRepository,
-                plantationAssignmentRepository);
+                plantationAssignmentRepository,
+                plantationRepository);
 
         validRequest = new HarvestRequestDto();
         validRequest.setPlantationId(plantationId);
@@ -113,6 +118,8 @@ class HarvestServiceTest {
         when(plantationAssignmentRepository.findByPersonnelIdAndRole(
                 mandorId, PlantationAssignment.PersonnelRole.MANDOR))
                 .thenReturn(List.of(plantationAssignment));
+        when(plantationRepository.findById(plantationId))
+                .thenReturn(Optional.of(Plantation.builder().id(plantationId).name("Kebun A").build()));
     }
 
     @Test
@@ -144,6 +151,30 @@ class HarvestServiceTest {
 
         assertNotNull(result);
         verify(harvestResultRepository).save(any());
+    }
+
+    @Test
+    void submitHarvest_missingPlantation_throwsException() {
+        WorkerAssignment workerAssignment = WorkerAssignment.builder()
+                .workerId(workerId)
+                .mandorId(mandorId)
+                .build();
+        PlantationAssignment plantationAssignment = PlantationAssignment.builder()
+                .plantationId(plantationId)
+                .personnelId(mandorId)
+                .role(PlantationAssignment.PersonnelRole.MANDOR)
+                .build();
+        when(workerAssignmentRepository.findById(workerId)).thenReturn(Optional.of(workerAssignment));
+        when(plantationAssignmentRepository.findByPersonnelIdAndRole(
+                mandorId, PlantationAssignment.PersonnelRole.MANDOR))
+                .thenReturn(List.of(plantationAssignment));
+        when(plantationRepository.findById(plantationId)).thenReturn(Optional.empty());
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> harvestService.submitHarvest(workerId, validRequest));
+
+        assertEquals("Kebun tidak ditemukan", ex.getMessage());
+        verify(harvestResultRepository, never()).save(any());
     }
 
 
@@ -292,7 +323,7 @@ class HarvestServiceTest {
 
     @Test
     void getHarvestById_found() {
-        when(harvestResultRepository.findById(harvestId)).thenReturn(Optional.of(pendingHarvest));
+        when(harvestResultRepository.findWithPhotosById(harvestId)).thenReturn(Optional.of(pendingHarvest));
 
         HarvestResult result = harvestService.getHarvestById(harvestId);
 
@@ -302,7 +333,7 @@ class HarvestServiceTest {
 
     @Test
     void getHarvestById_notFound_throwsException() {
-        when(harvestResultRepository.findById(harvestId)).thenReturn(Optional.empty());
+        when(harvestResultRepository.findWithPhotosById(harvestId)).thenReturn(Optional.empty());
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> harvestService.getHarvestById(harvestId));

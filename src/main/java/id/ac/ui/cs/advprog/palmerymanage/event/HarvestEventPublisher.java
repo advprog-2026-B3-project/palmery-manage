@@ -19,13 +19,13 @@ public class HarvestEventPublisher {
     private final DomainEventPublisher domainEventPublisher;
 
     @Value("${rabbitmq.exchange.harvest:harvest_exchange}")
-    private String exchange;
+    private String exchange = "harvest_exchange";
 
     @Value("${rabbitmq.routingkey.harvest.approved:harvest_approved_routing_key}")
-    private String routingKeyApproved;
+    private String routingKeyApproved = "harvest_approved_routing_key";
 
     @Value("${rabbitmq.routingkey.harvest.submitted:harvest_submitted_routing_key}")
-    private String routingKeySubmitted;
+    private String routingKeySubmitted = "harvest_submitted_routing_key";
 
     public HarvestEventPublisher(RabbitTemplate rabbitTemplate, DomainEventPublisher domainEventPublisher) {
         this.rabbitTemplate = rabbitTemplate;

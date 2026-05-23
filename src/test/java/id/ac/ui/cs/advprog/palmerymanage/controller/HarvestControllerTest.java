@@ -14,6 +14,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -83,6 +85,28 @@ class HarvestControllerTest {
         mockMvc.perform(post("/api/harvests")
                         .header("X-User-Id", workerId.toString())
                         .header("X-User-Role", "BURUH")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void submitHarvest_withAuthenticationPrincipal_returns201() throws Exception {
+        HarvestRequestDto request = new HarvestRequestDto();
+        request.setPlantationId(UUID.randomUUID());
+        request.setMandorId(mandorId);
+        request.setHarvestDate(LocalDate.now());
+        request.setKgHarvested(100f);
+        request.setNotes("Panen hari ini lancar");
+        var authentication = new UsernamePasswordAuthenticationToken(
+                workerId.toString(),
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_BURUH")));
+
+        when(harvestService.submitHarvest(eq(workerId), any())).thenReturn(sampleHarvest);
+
+        mockMvc.perform(post("/api/harvests")
+                        .principal(authentication)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated());

@@ -26,6 +26,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                .cors(Customizer.withDefaults())
+
                 // Microservice — tidak pakai CSRF (stateless REST)
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -41,8 +43,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/debug/healthcheck").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/harvests/photos/**").permitAll()
 
-                        // GET kebun: ADMIN & MANDOR
-                        .requestMatchers(HttpMethod.GET, "/kebun", "/kebun/**").hasAnyRole("ADMIN", "MANDOR")
+                        // Allow CORS preflight from the FE before authenticated requests
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                        // GET kebun: read-only access for setup/review and Buruh harvest submission
+                        .requestMatchers(HttpMethod.GET, "/kebun", "/kebun/**").hasAnyRole("ADMIN", "MANDOR", "BURUH")
 
                         // Semua mutating endpoint: ADMIN only
                         .requestMatchers(HttpMethod.POST, "/kebun/**").hasRole("ADMIN")

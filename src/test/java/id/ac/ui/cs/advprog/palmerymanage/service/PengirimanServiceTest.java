@@ -56,6 +56,9 @@ class PengirimanServiceTest {
     @Mock
     private DriverProfileLookup driverProfileLookup;
 
+    @Mock
+    private PengirimanMonitoringService monitoringService;
+
     private PengirimanService pengirimanService;
 
     private UUID harvestId1;
@@ -86,7 +89,8 @@ class PengirimanServiceTest {
                 plantationAssignmentRepository,
                 eventPublisher,
                 statusTransitionPolicy,
-                driverProfileLookup
+                driverProfileLookup,
+                monitoringService
         );
 
         harvest1 = new HarvestResult();
